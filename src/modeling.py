@@ -1,10 +1,11 @@
 """
-Baseline modeling module for Eurobank customer churn prediction.
+Modeling module for Eurobank customer churn prediction.
 
 Provides:
 1. Majority-class Dummy Classifier.
-2. Logistic Regression pipeline.
-3. Classification evaluation metrics.
+2. Standard Logistic Regression.
+3. Class-weighted Logistic Regression.
+4. Configurable binary classification evaluation.
 """
 
 import numpy as np
@@ -31,8 +32,9 @@ def build_baseline_models() -> dict:
     Returns
     -------
     dict
-        Dictionary containing Dummy Classifier and
-        Logistic Regression pipeline.
+        Dictionary containing Dummy Classifier,
+        Standard Logistic Regression and
+        Class-weighted Logistic Regression.
     """
 
     dummy_model = DummyClassifier(
@@ -47,6 +49,21 @@ def build_baseline_models() -> dict:
                 LogisticRegression(
                     max_iter=1000,
                     random_state=42,
+                    class_weight=None,
+                ),
+            ),
+        ]
+    )
+
+    balanced_logistic_model = Pipeline(
+        steps=[
+            ("preprocessor", build_preprocessor()),
+            (
+                "classifier",
+                LogisticRegression(
+                    max_iter=1000,
+                    random_state=42,
+                    class_weight="balanced",
                 ),
             ),
         ]
@@ -55,14 +72,32 @@ def build_baseline_models() -> dict:
     return {
         "dummy": dummy_model,
         "logistic_regression": logistic_model,
+        "logistic_regression_balanced": balanced_logistic_model,
     }
 
 
-def evaluate_model(model, X_test, y_test) -> dict:
+def evaluate_model(
+    model,
+    X_test,
+    y_test,
+    threshold: float = 0.5,
+) -> dict:
     """
     Evaluate a fitted binary classification model.
 
     Class 1 represents a churned customer.
+
+    Parameters
+    ----------
+    model:
+        Fitted binary classification model.
+    X_test:
+        Feature dataset.
+    y_test:
+        Actual target values.
+    threshold:
+        Probability threshold for predicting churn.
+        Defaults to 0.5.
 
     Returns
     -------
@@ -71,7 +106,17 @@ def evaluate_model(model, X_test, y_test) -> dict:
         ROC-AUC and confusion matrix.
     """
 
-    predictions = model.predict(X_test)
+    if (
+        isinstance(threshold, (bool, np.bool_))
+        or not isinstance(
+            threshold,
+            (int, float, np.integer, np.floating),
+        )
+    ):
+        raise ValueError("Threshold must be a numeric value.")
+
+    if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+        raise ValueError("Threshold must be between 0 and 1.")
 
     probabilities = model.predict_proba(X_test)
 
@@ -86,6 +131,8 @@ def evaluate_model(model, X_test, y_test) -> dict:
 
     if not np.isfinite(churn_probabilities).all():
         raise ValueError("Model produced invalid prediction probabilities.")
+
+    predictions = (churn_probabilities >= threshold).astype(int)
 
     matrix = confusion_matrix(
         y_test,

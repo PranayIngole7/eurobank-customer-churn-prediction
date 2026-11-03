@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -26,7 +27,13 @@ def sample_training_data():
             "EstimatedSalary": 30000.0 + index,
             "Geography": ["France", "Germany", "Spain"][index % 3],
             "Gender": ["Male", "Female"][index % 2],
-            "AgeGroup": ["<30", "30-39", "40-49", "50-59", "60+"][index % 5],
+            "AgeGroup": [
+                "<30",
+                "30-39",
+                "40-49",
+                "50-59",
+                "60+",
+            ][index % 5],
             "HasCrCard": index % 2,
             "IsActiveMember": (index + 1) % 2,
             "HasBalance": int(index > 0),
@@ -47,20 +54,19 @@ def test_build_baseline_models_returns_expected_models():
     assert set(models.keys()) == {
         "dummy",
         "logistic_regression",
+        "logistic_regression_balanced",
     }
 
     assert isinstance(models["dummy"], DummyClassifier)
     assert isinstance(models["logistic_regression"], Pipeline)
+    assert isinstance(models["logistic_regression_balanced"], Pipeline)
 
 
 def test_models_are_unfitted_initially():
     models = build_baseline_models()
 
-    assert not hasattr(models["dummy"], "classes_")
-    assert not hasattr(
-        models["logistic_regression"].named_steps["classifier"],
-        "classes_",
-    )
+    for model in models.values():
+        assert not hasattr(model, "classes_")
 
 
 def test_logistic_regression_uses_expected_configuration():
@@ -71,6 +77,21 @@ def test_logistic_regression_uses_expected_configuration():
     assert isinstance(classifier, LogisticRegression)
     assert classifier.max_iter == 1000
     assert classifier.random_state == 42
+    assert classifier.class_weight is None
+
+
+def test_balanced_logistic_regression_uses_expected_configuration():
+    models = build_baseline_models()
+
+    classifier = (
+        models["logistic_regression_balanced"]
+        .named_steps["classifier"]
+    )
+
+    assert isinstance(classifier, LogisticRegression)
+    assert classifier.max_iter == 1000
+    assert classifier.random_state == 42
+    assert classifier.class_weight == "balanced"
 
 
 def test_models_can_be_fitted(sample_training_data):
@@ -109,6 +130,92 @@ def test_evaluation_returns_expected_metrics(sample_training_data):
     assert all(len(row) == 2 for row in results["confusion_matrix"])
 
 
+def test_custom_threshold_changes_predictions():
+    class FixedProbabilityModel:
+        classes_ = np.array([0, 1])
+
+        def predict_proba(self, X):
+            churn_probabilities = np.array([0.20, 0.40, 0.60, 0.80])
+
+            return np.column_stack((
+                1 - churn_probabilities,
+                churn_probabilities,
+            ))
+
+    X = pd.DataFrame({"feature": [1, 2, 3, 4]})
+    y = pd.Series([0, 1, 0, 1])
+
+    model = FixedProbabilityModel()
+
+    default_results = evaluate_model(model, X, y)
+    custom_results = evaluate_model(model, X, y, threshold=0.65)
+
+    assert (
+        default_results["confusion_matrix"]
+        != custom_results["confusion_matrix"]
+    )
+
+    assert default_results["confusion_matrix"] == [
+        [1, 1],
+        [1, 1],
+    ]
+
+    assert custom_results["confusion_matrix"] == [
+        [2, 0],
+        [1, 1],
+    ]
+
+
+def test_evaluation_threshold_zero_predicts_all_churn(sample_training_data):
+    X, y = sample_training_data
+    model = build_baseline_models()["logistic_regression"]
+
+    model.fit(X, y)
+
+    results = evaluate_model(model, X, y, threshold=0.0)
+
+    assert results["confusion_matrix"][0][0] == 0
+    assert results["confusion_matrix"][1][0] == 0
+
+
+def test_evaluation_threshold_one_predicts_no_churn(sample_training_data):
+    X, y = sample_training_data
+    model = build_baseline_models()["logistic_regression"]
+
+    model.fit(X, y)
+
+    results = evaluate_model(model, X, y, threshold=1.0)
+
+    assert results["confusion_matrix"][0][1] == 0
+    assert results["confusion_matrix"][1][1] == 0
+
+
+@pytest.mark.parametrize(
+    "threshold",
+    [
+        -0.01,
+        1.01,
+        np.nan,
+        np.inf,
+        -np.inf,
+        "0.65",
+        None,
+        True,
+    ],
+)
+def test_evaluation_rejects_invalid_thresholds(
+    sample_training_data,
+    threshold,
+):
+    X, y = sample_training_data
+    model = build_baseline_models()["logistic_regression"]
+
+    model.fit(X, y)
+
+    with pytest.raises(ValueError):
+        evaluate_model(model, X, y, threshold=threshold)
+
+
 def test_dummy_classifier_has_zero_churn_recall(sample_training_data):
     X, y = sample_training_data
 
@@ -133,5 +240,5 @@ def test_fresh_model_instances_are_independent():
     first = build_baseline_models()
     second = build_baseline_models()
 
-    assert first["dummy"] is not second["dummy"]
-    assert first["logistic_regression"] is not second["logistic_regression"]
+    for name in first:
+        assert first[name] is not second[name]
