@@ -85,3 +85,62 @@ def split_dataset(
     )
 
     return X_train, X_test, y_train, y_test
+
+
+VALIDATION_SIZE = 0.25
+VALIDATION_RANDOM_STATE = 42
+
+
+def split_training_data(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    """
+    Split the original training data into internal training
+    and validation datasets.
+
+    The original test dataset is not involved in this operation.
+    """
+
+    if not isinstance(X_train, pd.DataFrame):
+        raise TypeError("X_train must be a pandas DataFrame.")
+
+    if not isinstance(y_train, pd.Series):
+        raise TypeError("y_train must be a pandas Series.")
+
+    if len(X_train) != len(y_train):
+        raise ValueError("Features and target must have equal lengths.")
+
+    if not X_train.index.equals(y_train.index):
+        raise ValueError("Features and target indexes must match.")
+
+    validate_feature_data(X_train)
+
+    if y_train.isnull().any():
+        raise ValueError("Target contains missing values.")
+
+    if not y_train.isin([0, 1]).all():
+        raise ValueError("Target must contain only 0 and 1.")
+
+    if y_train.nunique() != 2:
+        raise ValueError("Target must contain both classes: 0 and 1.")
+
+    (
+        X_internal_train,
+        X_validation,
+        y_internal_train,
+        y_validation,
+    ) = train_test_split(
+        X_train,
+        y_train,
+        test_size=VALIDATION_SIZE,
+        random_state=VALIDATION_RANDOM_STATE,
+        stratify=y_train,
+    )
+
+    return (
+        X_internal_train,
+        X_validation,
+        y_internal_train,
+        y_validation,
+    )
