@@ -13,6 +13,14 @@ from sklearn.metrics import roc_curve, roc_auc_score
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pandas as pd
+
+from sklearn.metrics import (
+    precision_score,
+    recall_score,
+    f1_score,
+)
+
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -293,3 +301,185 @@ def plot_precision_recall_curve(y_true, y_score, output_path=None):
         fig.savefig(output_path, dpi=300, bbox_inches="tight")
 
     return fig, ax, average_precision
+
+def compare_thresholds(y_true, y_score, thresholds):
+    """
+    Compare classification performance across multiple probability thresholds.
+
+    Parameters
+    ----------
+    y_true : array-like
+        Actual binary class labels (0 or 1).
+
+    y_score : array-like
+        Predicted probabilities for the positive class.
+
+    thresholds : array-like
+        Classification thresholds between 0 and 1.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Threshold-wise precision, recall, F1-score, and confusion matrix counts.
+    """
+
+    y_true = np.asarray(y_true)
+    y_score = np.asarray(y_score)
+    thresholds = np.asarray(thresholds)
+
+    # Validate dimensions and non-empty inputs.
+    if y_true.ndim != 1 or y_true.size == 0:
+        raise ValueError("y_true must be a non-empty 1D array.")
+
+    if y_score.ndim != 1 or y_score.size == 0:
+        raise ValueError("y_score must be a non-empty 1D array.")
+
+    if thresholds.ndim != 1 or thresholds.size == 0:
+        raise ValueError("thresholds must be a non-empty 1D array.")
+
+    if len(y_true) != len(y_score):
+        raise ValueError("y_true and y_score must have the same length.")
+
+    # Validate actual labels.
+    if not np.isin(y_true, [0, 1]).all():
+        raise ValueError("y_true must contain only binary labels 0 and 1.")
+
+    if len(np.unique(y_true)) != 2:
+        raise ValueError("y_true must contain both classes: 0 and 1.")
+
+    # Validate probability scores.
+    try:
+        y_score = y_score.astype(float)
+    except (TypeError, ValueError):
+        raise ValueError("y_score must contain numeric probability scores.")
+
+    if not np.isfinite(y_score).all():
+        raise ValueError("y_score must contain only finite values.")
+
+    if ((y_score < 0) | (y_score > 1)).any():
+        raise ValueError("y_score values must be between 0 and 1.")
+
+    # Validate thresholds.
+    if thresholds.dtype.kind not in "iuf":
+        raise ValueError(
+            "thresholds must contain numeric values, not strings or booleans."
+        )
+
+    thresholds = thresholds.astype(float)
+
+    if not np.isfinite(thresholds).all():
+        raise ValueError("thresholds must contain only finite values.")
+
+    if ((thresholds < 0) | (thresholds > 1)).any():
+        raise ValueError("thresholds must be between 0 and 1.")
+
+    results = []
+
+    for threshold in thresholds:
+        y_pred = (y_score >= threshold).astype(int)
+
+        tn, fp, fn, tp = confusion_matrix(
+            y_true,
+            y_pred,
+            labels=[0, 1],
+        ).ravel()
+
+        results.append({
+            "threshold": threshold,
+            "precision": precision_score(
+                y_true,
+                y_pred,
+                zero_division=0,
+            ),
+            "recall": recall_score(
+                y_true,
+                y_pred,
+                zero_division=0,
+            ),
+            "f1_score": f1_score(
+                y_true,
+                y_pred,
+                zero_division=0,
+            ),
+            "tn": tn,
+            "fp": fp,
+            "fn": fn,
+            "tp": tp,
+        })
+
+    return pd.DataFrame(results)
+
+def plot_threshold_comparison(comparison, output_path=None):
+    """
+    Plot precision, recall, and F1-score across classification thresholds.
+
+    Parameters
+    ----------
+    comparison : pandas.DataFrame
+        Results returned by compare_thresholds().
+
+    output_path : str or Path, optional
+        Location where the plot should be saved.
+
+    Returns
+    -------
+    tuple
+        Matplotlib figure and axes.
+    """
+
+    required_columns = {
+        "threshold",
+        "precision",
+        "recall",
+        "f1_score",
+    }
+
+    if not isinstance(comparison, pd.DataFrame):
+        raise ValueError("comparison must be a pandas DataFrame.")
+
+    if comparison.empty:
+        raise ValueError("comparison DataFrame must not be empty.")
+
+    if not required_columns.issubset(comparison.columns):
+        raise ValueError(
+            f"comparison must contain these columns: {required_columns}"
+        )
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(
+        comparison["threshold"],
+        comparison["precision"],
+        marker="o",
+        label="Precision",
+    )
+
+    ax.plot(
+        comparison["threshold"],
+        comparison["recall"],
+        marker="o",
+        label="Recall",
+    )
+
+    ax.plot(
+        comparison["threshold"],
+        comparison["f1_score"],
+        marker="o",
+        label="F1-score",
+    )
+
+    ax.set_title("Classification Performance Across Thresholds")
+    ax.set_xlabel("Classification Threshold")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fig.tight_layout()
+
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+
+    return fig, ax
