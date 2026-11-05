@@ -83,121 +83,175 @@ The dataset has a moderate class imbalance, which will be considered during mode
 
 ## 5. Machine Learning Methodology
 
-The project follows a structured machine learning workflow.
+The project follows a structured machine learning workflow covering data preparation, model development, evaluation, explainability, and fairness analysis.
+
+### Completed Workflow
 
 1. Dataset inspection and data quality validation.
 2. Exploratory data analysis.
 3. Feature engineering.
 4. Data preprocessing and encoding.
-5. Stratified training and testing split.
-6. Baseline model development.
-7. Model comparison and evaluation.
-8. Classification threshold optimization.
+5. Stratified training, validation, and test splitting.
+6. Baseline model development and model comparison.
+7. Model improvement and validation.
+8. Classification evaluation and threshold optimization.
 9. Customer-level churn risk scoring.
 10. Model explainability and feature importance.
-11. Fairness and comparative analysis.
-12. Model persistence and application integration.
-13. Interactive dashboard development.
-14. Testing and documentation.
+11. Fairness and comparative analysis across customer groups.
 
-### Planned Models
+### Upcoming Workflow
+
+12. Model persistence and application integration.
+13. Interactive Streamlit dashboard development.
+14. Additional testing and documentation.
+15. Final packaging and submission.
+
+### Models Evaluated
 
 - Logistic Regression
 - Decision Tree Classifier
 - Random Forest Classifier
 - Gradient Boosting Classifier
-- XGBoost (optional, subject to evaluation and project requirements)
+
+The selected model is Balanced Logistic Regression, with class weighting enabled to address class imbalance.
 
 ### Evaluation Metrics
 
-The models will be evaluated using:
+The project evaluates models using:
 
 - Accuracy
 - Precision
 - Recall
 - F1-score
 - ROC-AUC
-- PR-AUC
+- Average Precision (PR-AUC)
 - Confusion Matrix
 - Specificity
 - Brier Score and probability calibration
 
-Model selection will consider both predictive performance and the practical cost of false positives and false negatives.
+Model selection considers predictive performance, class imbalance, and the practical consequences of false positives and false negatives.
 
 ## 6. Feature Engineering
 
-The following candidate features will be investigated:
+Feature engineering transforms the original customer attributes into additional features that support exploratory analysis and predictive modeling.
 
-- Balance-to-salary ratio.
-- Product density indicator.
-- Engagement-product interaction.
-- Age-tenure interaction.
+The implemented feature engineering includes:
 
-Their usefulness will be evaluated experimentally rather than assumed.
+- `HasBalance`: Indicates whether a customer has a non-zero account balance.
+- `AgeGroup`: Groups customer ages into meaningful age categories for analysis.
+
+The engineered dataset is used consistently in subsequent preprocessing, model training, evaluation, explainability, and fairness analysis.
 
 ## 7. Project Structure
 
 ```text
 eurobank-customer-churn-prediction/
-│
-├── data/
-│   ├── raw/
-│   └── processed/
-│
-├── notebooks/
-│   └── 01_exploratory_data_analysis.ipynb
-│
-├── src/
-│   └── data_quality.py
-│
-├── models/
-│
 ├── reports/
-│
-├── tests/
-│   └── test_data_quality.py
-│
-├── app.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-└── .venv/
+│   ├── baseline-model.md
+│   ├── business-impact-analysis.md
+│   ├── classification-report-validation.json
+│   ├── customer-risk-scores.csv
+│   ├── customer-risk-scoring.md
+│   ├── evaluation-report.md
+│   ├── fairness-analysis.md
+│   ├── fairness-group-metrics.csv
+│   ├── fairness-summary.json
+│   ├── feature-coefficients.csv
+│   ├── local-customer-contributions.csv
+│   ├── local-customer-summary.csv
+│   ├── model-explainability.md
+│   ├── model-improvement.md
+│   ├── permutation-importance.csv
+│   ├── preprocessing.md
+│   ├── threshold-comparison.csv
+│   └── figures/
+│       ├── confusion-matrix-validation.png
+│       ├── fairness-comparison.png
+│       ├── feature-coefficients.png
+│       ├── permutation-importance.png
+│       ├── precision-recall-curve-validation.png
+│       ├── roc-curve-validation.png
+│       └── threshold-comparison.png
+├── scripts/
+│   ├── analyze_business_impact.py
+│   ├── analyze_model_explainability.py
+│   ├── analyze_model_fairness.py
+│   ├── compare_thresholds.py
+│   ├── evaluate_validation.py
+│   ├── explain_customer_predictions.py
+│   └── generate_risk_scores.py
+├── src/
+│   ├── data_quality.py
+│   ├── data_split.py
+│   ├── evaluation.py
+│   ├── explainability.py
+│   ├── fairness.py
+│   ├── feature_engineering.py
+│   ├── modeling.py
+│   ├── preprocessing.py
+│   └── risk_scoring.py
+└── tests/
+├── test_data_quality.py
+├── test_data_split.py
+├── test_evaluation.py
+├── test_explainability.py
+├── test_fairness.py
+├── test_feature_engineering.py
+├── test_modeling.py
+├── test_preprocessing.py
+├── test_risk_scoring.py
+└── test_validation_split.py
 ```
 
 The `.venv/` directory is local and excluded from version control.
 
 ## 8. Current Development Progress
 
-The project is being developed through the following phases:
+The project is being developed incrementally through the following phases.
 
-| Phase | Description                                 | Status   |
-| ----- | ------------------------------------------- | -------- |
-| 1     | Project Setup and Dataset Inspection        | Complete |
-| 2     | Data Cleaning and Quality Checks            | Complete |
-| 3     | Exploratory Data Analysis                   | Complete |
-| 4     | Feature Engineering                         | Upcoming |
-| 5     | Data Preprocessing                          | Planned  |
-| 6     | Train-Test Split and Cross-Validation       | Planned  |
-| 7     | Model Development                           | Planned  |
-| 8     | Model Evaluation and Threshold Optimization | Planned  |
-| 9     | Churn Risk Scoring                          | Planned  |
-| 10    | Model Explainability                        | Planned  |
-| 11    | Fairness and Comparative Analysis           | Planned  |
-| 12    | Model Saving and Application Integration    | Planned  |
-| 13    | Streamlit Dashboard Development             | Planned  |
-| 14    | Testing and Documentation                   | Planned  |
-| 15    | Final Packaging and Submission              | Planned  |
+| Phase | Description                                     | Status           |
+| ----- | ----------------------------------------------- | ---------------- |
+| 1     | Project Setup and Dataset Inspection            | Complete         |
+| 2     | Data Cleaning and Quality Checks                | Complete         |
+| 3     | Exploratory Data Analysis                       | Complete         |
+| 4     | Feature Engineering                             | Complete         |
+| 5     | Data Preprocessing                              | Complete         |
+| 6     | Train-Test Split and Baseline Model Preparation | Complete         |
+| 7     | Model Improvement and Validation                | Complete         |
+| 8     | Model Evaluation and Threshold Optimization     | Complete         |
+| 9     | Customer Churn Risk Scoring                     | Complete         |
+| 10    | Model Explainability                            | Complete         |
+| 11    | Fairness and Comparative Analysis               | Final Validation |
+| 12    | Model Saving and Application Integration        | Planned          |
+| 13    | Streamlit Dashboard Development                 | Planned          |
+| 14    | Testing and Documentation                       | Planned          |
+| 15    | Final Packaging and Submission                  | Planned          |
 
 ### Completed Work
 
-- Established the Python development environment.
-- Created the project directory structure.
-- Inspected the original customer dataset.
-- Implemented automated dataset quality validation.
-- Added unit tests for data validation.
-- Performed univariate, bivariate, and multivariate exploratory analysis.
-- Investigated numerical feature correlations with customer churn.
-- Documented initial findings and modeling considerations.
+- Established the Python development environment and project structure.
+- Inspected and validated the original customer dataset.
+- Implemented automated data quality checks and unit tests.
+- Performed exploratory data analysis and documented customer churn patterns.
+- Implemented feature engineering and preprocessing pipelines.
+- Established stratified training, validation, and test datasets.
+- Developed and compared classification models.
+- Improved model performance using class balancing and validation experiments.
+- Evaluated classification performance using multiple metrics and visualizations.
+- Selected a classification threshold based on validation performance.
+- Generated customer-level churn risk scores.
+- Implemented model explainability using feature coefficients, permutation importance, and local explanations.
+- Implemented group-wise fairness metrics across Gender, Geography, and AgeGroup.
+- Evaluated demographic parity, equal opportunity, equalized odds, and disparate impact.
+- Calculated Wilson score confidence intervals for selected group-level rates.
+- Generated fairness analysis CSV, JSON, and visualization artifacts.
+- Documented fairness findings, limitations, and potential improvement experiments.
+
+### Current Phase
+
+Phase 11 — Fairness and Comparative Analysis.
+
+The fairness analysis implementation and report are complete. Final project validation and documentation review are pending.
 
 ## 9. Getting Started
 
@@ -283,7 +337,11 @@ The completed project is expected to include:
 
 ## 12. Project Status
 
-**Current Status:** Foundation, data quality validation, and exploratory data analysis completed. Feature engineering is the next development phase.
+**Current Status:** Phases 1–10 are complete. Phase 11 — Fairness and Comparative Analysis — has completed implementation, testing, and report generation. Final visual and repository validation are pending.
+
+The project has progressed from initial data inspection through model development, evaluation, risk scoring, explainability, and fairness analysis.
+
+The next planned phase is Phase 12 — Model Saving and Application Integration.
 
 This is an evolving machine learning project. Results, model comparisons, and conclusions will be updated as development progresses.
 
