@@ -2,21 +2,9 @@
 
 import streamlit as st
 
-from src.prediction_service import PredictionService
+from dashboard.services import get_prediction_service
 
 from dashboard.components import render_header
-
-
-@st.cache_resource
-def get_prediction_service():
-    """
-    Load and cache the prediction service.
-
-    Streamlit reruns the application after user interactions.
-    Caching prevents the persisted model from being loaded repeatedly
-    within the same Streamlit process.
-    """
-    return PredictionService()
 
 
 def render_prediction_result(result, threshold):
