@@ -13,9 +13,7 @@ The original held-out test set is never used.
 import json
 from pathlib import Path
 
-from jupyter_builder.jupyterlab_semver import valid
 import matplotlib.pyplot as plt
-from numpy.char import upper
 import numpy as np
 import pandas as pd
 

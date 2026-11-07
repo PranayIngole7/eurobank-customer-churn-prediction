@@ -4,11 +4,16 @@
 
 This document explains how to train, persist, load, and use the final customer churn prediction model.
 
-Phase 12 introduces a reusable Python prediction service. A web dashboard or REST API is not part of this phase; the Streamlit application is planned for Phase 13.
+The project provides:
+- A reusable Python prediction service for single-customer and batch inference.
+- Persisted model and metadata artifacts.
+- A four-page Streamlit dashboard for exploring predictions and model insights.
+
+The dashboard is launched using `streamlit run app.py`. A REST API is not currently implemented.
 
 ## 2. Prediction Architecture
 
-The inference workflow is:
+The application follows this prediction workflow:
 
 ```text
 Raw Customer Input
@@ -25,7 +30,8 @@ Feature Engineering
   - AgeGroup
        |
        v
-Feature Column Selection and Validation
+Model Feature Selection
+and Validation
        |
        v
 Persisted Scikit-learn Pipeline
@@ -44,69 +50,84 @@ Prediction Results
   - churn_prediction
 ```
 
-**Important:** The persisted scikit-learn pipeline contains the fitted preprocessor and classifier. Feature engineering is performed separately by `PredictionService` through `engineer_features()`. Therefore, the saved pipeline alone does not accept raw customer records.
+The prediction service performs feature engineering and input validation before passing data to the persisted model.
 
-## 3. Final Model Training
+The saved scikit-learn pipeline contains the fitted preprocessing components and classifier. It does not independently accept raw customer records because the project's feature engineering is performed separately by `PredictionService`.
+
+## 3. Model Training and Persistence
 
 ### Prerequisites
 
-- Python environment activated.
-- Project dependencies installed from `requirements.txt`.
-- Raw dataset available at `data/raw/european-bank.csv`.
+- Python environment with project dependencies installed.
+- Original dataset at `data/raw/european-bank.csv`.
+- Required training and preprocessing modules.
 
-### Run Training
+Install the runtime dependencies:
 
-From the project root:
+```bash
+pip install -r requirements.txt
+```
+
+### Train the final model
+
+Run:
 
 ```bash
 python -m scripts.train_final_model
 ```
 
-The training process:
+The training script performs the following operations:
 
-1. Loads the raw customer dataset.
-2. Performs feature engineering.
-3. Creates the stratified 80/20 training and test split.
-4. Trains the selected Balanced Logistic Regression pipeline on the original 8,000-record training partition.
-5. Evaluates the model on the untouched 2,000-record test partition.
+1. Loads the original customer dataset.
+2. Applies feature engineering to generate `HasBalance` and `AgeGroup`.
+3. Uses the established stratified 80/20 train/test split.
+4. Trains the selected Balanced Logistic Regression model using the original training partition.
+5. Evaluates the fitted model on the untouched original test partition.
 6. Uses the previously selected classification threshold of 0.65.
-7. Saves the model, metadata, and evaluation reports.
+7. Generates model metadata and persists the fitted model.
+8. Saves machine-readable evaluation results and a Markdown evaluation report.
 
-The classification threshold was selected using validation data. The original test partition is reserved for final evaluation and is not used to tune the threshold or model.
+The classification threshold was selected using validation data. The original test partition is reserved for final evaluation and is not used to tune the model, threshold, or features.
 
-### Generated Artifacts
+### Generated artifacts
 
-| Artifact                                   | Purpose                                     |
-| ------------------------------------------ | ------------------------------------------- |
-| `models/churn_model.joblib`                | Persisted fitted scikit-learn pipeline      |
-| `models/model_metadata.json`               | Model configuration and provenance metadata |
-| `reports/final-model-test-evaluation.json` | Machine-readable test evaluation            |
-| `reports/final-model-evaluation.md`        | Human-readable test evaluation              |
+| Artifact                                   | Purpose                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `models/churn_model.joblib`                | Persisted fitted scikit-learn pipeline                                        |
+| `models/model_metadata.json`               | Model configuration, feature information, threshold, and environment metadata |
+| `reports/final-model-test-evaluation.json` | Machine-readable final test evaluation                                        |
+| `reports/final-model-evaluation.md`        | Human-readable final test evaluation                                          |
 
-The generated model files are ignored by Git. After cloning the repository, run the training command to generate them locally before using the prediction service.
+Model artifacts are generated locally and excluded from Git.
+
+After cloning the repository, run the training script to generate the model and metadata artifacts before using the prediction service or dashboard.
 
 ## 4. Model Metadata
 
-The metadata file records:
+The metadata file describes the persisted model and its expected input configuration.
 
-- Metadata schema version
-- Model name and algorithm
-- Classification threshold
-- Expected feature names and their order
-- Number of training records
-- Random seed
-- Target column and positive class
-- Model classes
-- Python, scikit-learn, and joblib versions
-- Model creation timestamp
+It contains:
 
-The prediction service uses the metadata to obtain the configured classification threshold and expected feature order.
+- Metadata schema version.
+- Model name and algorithm.
+- Classification threshold.
+- Expected feature names and order.
+- Number of training records.
+- Random state.
+- Target column and positive class.
+- Model class labels.
+- Python, scikit-learn, and joblib versions.
+- Artifact creation timestamp.
 
-Version information is recorded for traceability; it does not constitute an automatic dependency-compatibility check. Use the project's `requirements.txt` when reproducing the environment.
+The prediction service uses metadata to retrieve the classification threshold and expected feature order.
+
+The persistence module validates the metadata structure and compatibility with the application's expected feature configuration. It also verifies that the loaded model's class labels match the metadata.
+
+Recorded environment versions provide traceability. They do not constitute automatic compatibility checks for every dependency. Use the project's declared requirements when recreating the environment.
 
 ## 5. Single-Customer Prediction
 
-The prediction service loads the persisted model and metadata when the service instance is created.
+The `PredictionService` class provides a reusable interface for generating predictions from raw customer attributes.
 
 Example:
 
@@ -125,7 +146,7 @@ customer = {
     "NumOfProducts": 1,
     "HasCrCard": 1,
     "IsActiveMember": 0,
-    "EstimatedSalary": 101348.88,
+    "EstimatedSalary": 101348.88
 }
 
 result = service.predict_one(customer)
@@ -133,20 +154,22 @@ result = service.predict_one(customer)
 print(result)
 ```
 
-The result contains:
+The service returns a dictionary containing:
 
-| Field               | Description                                     |
-| ------------------- | ----------------------------------------------- |
-| `churn_probability` | Estimated probability of churn, between 0 and 1 |
-| `risk_score`        | Churn probability expressed on a 0–100 scale    |
-| `risk_category`     | Assigned risk category                          |
-| `churn_prediction`  | Binary prediction: 1 for churn, 0 for retained  |
+| Field               | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `churn_probability` | Estimated probability of customer churn, between 0 and 1 |
+| `risk_score`        | Churn probability expressed on a 0–100 scale             |
+| `risk_category`     | Assigned customer risk category                          |
+| `churn_prediction`  | Binary prediction: 0 for retained or 1 for churned       |
 
-The classification decision uses the threshold stored in model metadata.
+The classification threshold is loaded from model metadata rather than hard-coded in the prediction method.
 
 ## 6. Batch Prediction
 
-The service also accepts a pandas DataFrame containing multiple customers.
+The prediction service also supports batch inference using a pandas DataFrame.
+
+Example:
 
 ```python
 import pandas as pd
@@ -166,11 +189,11 @@ customers = pd.DataFrame([
         "NumOfProducts": 1,
         "HasCrCard": 1,
         "IsActiveMember": 0,
-        "EstimatedSalary": 101348.88,
+        "EstimatedSalary": 101348.88
     },
     {
-        "CreditScore": 750,
-        "Geography": "Germany",
+        "CreditScore": 720,
+        "Geography": "Spain",
         "Gender": "Male",
         "Age": 35,
         "Tenure": 5,
@@ -178,8 +201,8 @@ customers = pd.DataFrame([
         "NumOfProducts": 2,
         "HasCrCard": 1,
         "IsActiveMember": 1,
-        "EstimatedSalary": 90000.0,
-    },
+        "EstimatedSalary": 85000.0
+    }
 ])
 
 results = service.predict_many(customers)
@@ -187,90 +210,149 @@ results = service.predict_many(customers)
 print(results)
 ```
 
-The returned DataFrame contains the prediction results and preserves the input DataFrame's index.
+The method returns a DataFrame containing prediction results for each input customer. The original input index is preserved.
 
-## 7. Required Raw Input Features
+The service loads the persisted model during initialization and reuses it for subsequent predictions.
 
-The prediction service expects these ten raw customer features:
+## 7. Input Features
 
-| Feature           | Description                               |
-| ----------------- | ----------------------------------------- |
-| `CreditScore`     | Customer credit score                     |
-| `Age`             | Customer age                              |
-| `Tenure`          | Years associated with the bank            |
-| `Balance`         | Customer account balance                  |
-| `NumOfProducts`   | Number of bank products                   |
-| `EstimatedSalary` | Estimated customer salary                 |
-| `Geography`       | Customer geography                        |
-| `Gender`          | Customer gender category from the dataset |
-| `HasCrCard`       | Credit card ownership indicator           |
-| `IsActiveMember`  | Active membership indicator               |
+The prediction service expects ten raw customer attributes.
 
-The service derives `AgeGroup` and `HasBalance` during feature engineering.
+| Feature           | Description                     |
+| ----------------- | ------------------------------- |
+| `CreditScore`     | Customer credit score           |
+| `Age`             | Customer age                    |
+| `Tenure`          | Number of years with the bank   |
+| `Balance`         | Customer account balance        |
+| `NumOfProducts`   | Number of bank products held    |
+| `EstimatedSalary` | Estimated customer salary       |
+| `Geography`       | Customer's geography            |
+| `Gender`          | Customer gender category        |
+| `HasCrCard`       | Credit card ownership indicator |
+| `IsActiveMember`  | Active membership indicator     |
 
-Additional columns, such as customer identifiers, may be supplied but are not used for model inference. The target column `Exited` is rejected as an input to prevent target leakage.
+The application derives two additional features:
 
-## 8. Input Validation
+- `HasBalance`: Indicates whether the customer has a positive balance.
+- `AgeGroup`: Groups customers into age categories.
+
+The resulting model input contains twelve features in the order declared by the model metadata.
+
+Additional columns, such as customer identifiers, may be supplied but are not included in model inference. The target column `Exited` must not be supplied.
+
+## 8. Input Validation and Error Handling
 
 The prediction service validates incoming data before inference.
 
-It checks:
+Validation includes:
 
-- Input type and non-empty batch data.
-- Required feature columns.
-- Duplicate column names.
-- Presence of the target column.
-- Valid age and balance values through feature engineering.
-- Missing or invalid feature values.
-- Expected feature order.
+- Correct input types for single and batch prediction.
+- Non-empty batch input.
+- No duplicate column names.
+- Presence of all required raw customer features.
+- Rejection of the target column `Exited`.
+- Valid age and balance values during feature engineering.
+- Validation of the complete engineered feature set.
+- Selection of model features in the expected order.
 
-The fitted OneHotEncoder uses `handle_unknown="ignore"`, allowing previously unseen categorical values to pass through preprocessing without failing solely because a category was absent during training.
+The feature engineering module rejects missing or non-numeric age and balance values, infinite values, non-integer ages, ages outside the supported 18–100 range, and negative balances.
 
-Invalid input raises an exception rather than silently producing a prediction.
+The preprocessing pipeline also validates the model feature data.
 
-## 9. Final Test Evaluation
+The fitted OneHotEncoder uses `handle_unknown="ignore"`, allowing previously unseen categorical values to be processed without an unknown-category error. This does not guarantee that predictions for unfamiliar categories will be reliable.
 
-The final model was trained on 8,000 records and evaluated on 2,000 held-out records.
+Invalid input raises an appropriate exception instead of silently producing a prediction.
 
-| Metric            | Result |
-| ----------------- | -----: |
-| Accuracy          | 0.8000 |
-| Precision         | 0.5081 |
-| Recall            | 0.5405 |
-| F1 Score          | 0.5238 |
-| ROC-AUC           | 0.7948 |
-| Average Precision | 0.5460 |
+## 9. Final Model Test Performance
+
+The selected Balanced Logistic Regression model achieved the following results on the untouched 2,000-record test partition.
+
+| Metric            | Test Result |
+| ----------------- | ----------: |
+| Accuracy          |      0.8000 |
+| Precision         |      0.5081 |
+| Recall            |      0.5405 |
+| F1-score          |      0.5238 |
+| ROC-AUC           |      0.7948 |
+| Average Precision |      0.5460 |
 
 ### Confusion Matrix
 
-|                 | Predicted retained | Predicted churned |
-| --------------- | -----------------: | ----------------: |
-| Actual retained |              1,380 |               213 |
-| Actual churned  |                187 |               220 |
+| Actual / Predicted | Retained (0) | Churned (1) |
+| ------------------ | -----------: | ----------: |
+| Retained (0)       |        1,380 |         213 |
+| Churned (1)        |          187 |         220 |
 
-The model detected 220 of the 407 customers who churned in the test partition and missed 187. It also classified 213 retained customers as churn risks.
+At the selected threshold of 0.65, the model correctly identified 220 of the 407 customers who churned in the test partition. It missed 187 actual churners and generated 213 false-positive churn predictions.
 
-Accuracy should not be considered in isolation because the dataset is imbalanced. Precision, recall, F1, ROC-AUC, Average Precision, and the confusion matrix provide additional information about model behavior.
+These results illustrate the model's ability to identify potential churn while also showing that its predictions require careful interpretation.
 
-See `reports/final-model-evaluation.md` for the complete evaluation.
+For detailed evaluation methodology, class-level metrics, and limitations, refer to `reports/final-model-evaluation.md`.
 
-## 10. Security and Operational Considerations
+## 10. Streamlit Dashboard
 
-- Joblib model files use Python pickle-based serialization. Only load model artifacts from trusted sources.
-- Do not commit generated model artifacts or customer-level sensitive information to the repository.
-- Avoid logging raw customer records or personally identifiable information in a future application.
-- Model metadata records dependency versions, but users should maintain a compatible environment using `requirements.txt`.
-- This project is an educational and portfolio demonstration. It is not a production-ready banking decision system.
-- Predictions should support human review and should not be treated as definitive decisions about customers.
+The project includes an interactive Streamlit dashboard launched from the repository root:
 
-## 11. Current Scope and Next Phase
+```bash
+streamlit run app.py
+```
 
-Phase 12 provides:
+The application provides four pages:
 
-- Final model training and held-out test evaluation.
+| Page                       | Purpose                                            |
+| -------------------------- | -------------------------------------------------- |
+| Overview                   | Presents the project and customer churn overview   |
+| Single Customer Prediction | Generates predictions for an individual customer   |
+| Batch Prediction           | Supports predictions for multiple customer records |
+| Model Insights             | Presents model evaluation and related insights     |
+
+The dashboard uses the project's application and prediction modules rather than implementing a separate prediction pipeline.
+
+The dashboard is an interactive local application. It is not a separately deployed production service.
+
+## 11. Security and Operational Limitations
+
+### Model artifact security
+
+The persisted model uses joblib serialization, which relies on Python's pickle-based serialization mechanisms.
+
+Only load model artifacts from trusted sources. Loading an untrusted or malicious serialized artifact can execute arbitrary code.
+
+### Customer data protection
+
+- Do not commit customer-level sensitive data or generated model artifacts.
+- Avoid logging raw customer records or personally identifiable information.
+- Protect access to the original dataset and generated prediction outputs.
+
+### Environment compatibility
+
+Use the declared project dependencies when training or loading the model. Differences in Python and library versions can affect serialized model compatibility.
+
+### Scope limitations
+
+This project is an educational customer churn prediction and model deployment demonstration.
+
+It does not currently provide:
+
+- A REST API.
+- Production banking infrastructure.
+- Automated production model monitoring.
+- A production model retraining pipeline.
+- A validated financial decision-making system.
+
+Model predictions should be interpreted as estimates, not guarantees of future customer behavior. Any real-world retention or customer-management decisions would require additional business validation, governance, monitoring, and human oversight.
+
+## 12. Current Capabilities
+
+The project currently provides:
+
+- Reproducible final model training and held-out test evaluation.
 - Model persistence and metadata validation.
+- Raw customer input validation and feature engineering.
 - Single-customer prediction.
 - Batch prediction.
-- Automated tests for training, persistence, and inference.
+- Probability-based customer risk scoring.
+- A four-page Streamlit dashboard.
+- Automated tests covering training, persistence, preprocessing, prediction, and dashboard-related functionality.
 
-A user-facing Streamlit dashboard is intentionally deferred to **Phase 13 — Streamlit Dashboard Development**.
+The prediction service and dashboard provide the current application interface. A REST API and production deployment infrastructure are outside the current implementation scope.

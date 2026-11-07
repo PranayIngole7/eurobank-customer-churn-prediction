@@ -273,7 +273,12 @@ def load_model(
     metadata = get_model_metadata(metadata_path)
 
     # joblib uses pickle-based serialization. Only load trusted artifacts.
-    model = joblib.load(model_path)
+    try:
+        model = joblib.load(model_path)
+    except Exception as exc:
+        raise ValueError(
+            "Unable to load model artifact; it may be corrupted or incompatible."
+        ) from exc
 
     if not hasattr(model, "predict_proba") or not hasattr(model, "classes_"):
         raise ValueError("Loaded artifact is not a fitted probability-capable model.")

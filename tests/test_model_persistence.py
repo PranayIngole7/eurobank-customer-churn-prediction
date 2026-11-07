@@ -197,6 +197,21 @@ def test_load_model_rejects_missing_model(metadata, tmp_path):
             metadata_path,
         )
 
+def test_load_model_rejects_corrupted_artifact(
+    metadata,
+    tmp_path,
+):
+    model_path = tmp_path / "corrupted_model.joblib"
+    metadata_path = tmp_path / "metadata.json"
+
+    metadata_path.write_text(json.dumps(metadata))
+    model_path.write_bytes(b"this is not a valid joblib artifact")
+
+    with pytest.raises(
+        ValueError,
+        match="Unable to load model artifact",
+    ):
+        load_model(model_path, metadata_path)
 
 def test_get_model_metadata_rejects_invalid_json(tmp_path):
     metadata_path = tmp_path / "metadata.json"
@@ -205,6 +220,24 @@ def test_get_model_metadata_rejects_invalid_json(tmp_path):
     with pytest.raises(ValueError, match="invalid JSON"):
         get_model_metadata(metadata_path)
 
+@pytest.mark.parametrize(
+    "invalid_structure",
+    [
+        [],
+        "invalid metadata",
+        123,
+        None,
+    ],
+)
+def test_get_model_metadata_rejects_invalid_json_structure(
+    invalid_structure,
+    tmp_path,
+):
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(invalid_structure))
+
+    with pytest.raises(TypeError, match="Metadata must be a dictionary"):
+        get_model_metadata(metadata_path)
 
 def test_get_model_metadata_rejects_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError):

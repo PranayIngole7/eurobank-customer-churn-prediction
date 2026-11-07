@@ -1,90 +1,82 @@
 # Customer Risk Scoring
 
-## 1. Overview
+## Methodology
 
-The customer risk-scoring component converts predicted churn probabilities into numerical risk scores and four business-facing risk categories. It also produces a binary churn prediction using the selected classification threshold.
+The risk-scoring component converts predicted churn probabilities into numerical scores, risk categories, and binary churn predictions.
 
-The selected Balanced Logistic Regression model is trained on the original 8,000 training records. It is then used to score the 2,000 held-out customer records.
-
-## 2. Scoring Methodology
-
-- Churn probability: model-predicted probability of class 1.
-- Risk score: churn probability multiplied by 100.
-- Classification threshold: 0.65.
-- Risk ranking: descending risk score, with CustomerId used as a deterministic tie-breaker.
+| Measure           | Definition                                              |
+| ----------------- | ------------------------------------------------------- |
+| Churn probability | Predicted probability of class 1                        |
+| Risk score        | Churn probability × 100                                 |
+| Churn threshold   | 0.65                                                    |
+| Ranking           | Descending risk score, with `CustomerId` as tie-breaker |
 
 ### Risk Categories
 
 | Category | Probability range |
-|---|---|
-| Low | 0.00–<0.30 |
-| Moderate | 0.30–<0.50 |
-| High | 0.50–<0.70 |
-| Critical | 0.70–1.00 |
+| -------- | ----------------- |
+| Low      | 0.00–<0.30        |
+| Moderate | 0.30–<0.50        |
+| High     | 0.50–<0.70        |
+| Critical | 0.70–1.00         |
 
-Risk categories and binary churn predictions serve different purposes. For example, a customer with a churn probability of 0.62 is classified as High risk but is not predicted to churn at the selected 0.65 threshold.
+Risk categories and binary predictions are separate classifications. For example, a probability of 0.62 is categorized as High risk but does not produce a positive churn prediction at threshold 0.65.
 
-These category boundaries are configurable business-policy choices, not statistically optimized cutoffs.
+Category boundaries are configurable business rules, not statistically optimized cutoffs.
 
-## 3. Scoring Results
+## Scoring Results
 
-A total of 2,000 held-out customers were scored.
+The selected Balanced Logistic Regression model was used to score 2,000 held-out test customers.
 
 | Risk category | Customers | Percentage |
-|---|---:|---:|
-| Low | 724 | 36.20% |
-| Moderate | 565 | 28.25% |
-| High | 378 | 18.90% |
-| Critical | 333 | 16.65% |
-| **Total** | **2,000** | **100%** |
+| ------------- | --------: | ---------: |
+| Low           |       724 |     36.20% |
+| Moderate      |       565 |     28.25% |
+| High          |       378 |     18.90% |
+| Critical      |       333 |     16.65% |
+| **Total**     | **2,000** |   **100%** |
 
-### Binary Churn Predictions
+### Binary Predictions
 
-| Prediction | Customers |
-|---|---:|
-| Not predicted to churn | 1,567 |
-| Predicted to churn | 433 |
-| **Total** | **2,000** |
+| Prediction             | Customers |
+| ---------------------- | --------: |
+| Not predicted to churn |     1,567 |
+| Predicted to churn     |       433 |
+| **Total**              | **2,000** |
 
-These are model predictions, not confirmed future customer outcomes.
+These predictions are estimates, not confirmed future customer outcomes.
 
-## 4. Output
+## Output
 
 Generated file: `reports/customer-risk-scores.csv`
 
-The CSV contains:
+The output includes:
+- `CustomerId`
+- `risk_rank`
+- `churn_probability`
+- `risk_score`
+- `risk_category`
+- `churn_prediction`
 
-- CustomerId
-- risk_rank
-- churn_probability
-- risk_score
-- risk_category
-- churn_prediction
+Customer identifiers are retained for reference and excluded from model features.
 
-Customer identifiers are retained for business reference and are not used as model features.
+## Validation
 
-## 5. Validation
+The generated output was checked for:
+- Exactly 2,000 records and no missing values.
+- Unique customer identifiers and ranks.
+- Valid probabilities and correctly calculated risk scores.
+- Risk categories and binary predictions matching their configured thresholds.
+- Sequential ranks and descending risk-score ordering.
 
-The generated output passed the following checks:
+## Limitations
 
-- Exactly 2,000 customer records.
-- No missing values.
-- No duplicate customer IDs or ranks.
-- Risk scores correctly calculated from probabilities.
-- Risk categories match the configured boundaries.
-- Binary predictions match the 0.65 threshold.
-- Sequential ranking from 1 to 2,000.
-- All probabilities within the valid range of 0 to 1.
-- Records sorted by descending risk score.
+- Risk categories require business validation.
+- Predicted probabilities have not undergone separate probability calibration.
+- Actual future churn cannot be established from these predictions.
+- Financial impact cannot be estimated without verified campaign costs, customer lifetime values, and retention outcomes.
+- The held-out test dataset is used here for scoring demonstration, not further model selection.
 
-## 6. Limitations
+## Data Source
 
-- Risk categories are configurable business rules and require business validation.
-- Predicted probabilities have not undergone a separate probability-calibration procedure.
-- Actual future churn outcomes cannot be established from these predictions alone.
-- No retention costs, customer lifetime values, or campaign success rates were provided; therefore, no financial savings or ROI are claimed.
-- The held-out test set was previously used for final model evaluation in Phase 7. Its use here is for customer-level scoring demonstration, not further model selection.
-
-## 7. Conclusion
-
-The customer risk-scoring component successfully converts churn probabilities into ranked customer-level outputs. The generated scores, categories, and binary predictions passed all implemented consistency checks.
+Generated by `scripts/generate_risk_scores.py` and saved to `reports/customer-risk-scores.csv`.
