@@ -88,20 +88,6 @@ def render_evaluation_details(evaluation):
         report_df,
         use_container_width=True,
         hide_index=True,
-        # column_config={
-        #     "Precision": st.column_config.NumberColumn(
-        #         "Precision",
-        #         format="percent",
-        #     ),
-        #     "Recall": st.column_config.NumberColumn(
-        #         "Recall",
-        #         format="percent",
-        #     ),
-        #     "F1-score": st.column_config.NumberColumn(
-        #         "F1-score",
-        #         format="percent",
-        #     ),
-        # },
     )
 
     st.warning(
@@ -147,8 +133,8 @@ def render_model_limitations(algorithm):
         **5. Correlated and overlapping features**
 
         Age and AgeGroup contain overlapping information. Their
-        coefficients and feature-importance values should not be
-        interpreted as independent effects.
+        feature-importance values should not be interpreted as
+        independent effects.
 
         **6. Observed subgroup disparities**
 
@@ -166,18 +152,24 @@ def render_model_limitations(algorithm):
 
         **8. No causal interpretation**
 
-        Model coefficients and feature importance describe learned
-        statistical associations. They do not establish that changing
-        a feature will cause a customer to remain with or leave a bank.
+        Model explanations and feature-importance measures describe
+        model behavior. They do not establish that changing a feature
+        will cause a customer to remain with or leave a bank.
         """
     )
 
     st.warning(
-        "Responsible-use guidance: use predictions as decision-support "
-        "signals for human review. Do not automatically deny services, "
-        "change customer terms, or take other consequential actions "
-        "solely because of a churn prediction. Monitor model performance "
-        "and subgroup outcomes before any real-world deployment."
+        "Responsible-use and interpretation guidance: use predictions "
+        "as decision-support signals for human review. Do not "
+        "automatically deny services, change customer terms, or take "
+        "other consequential actions solely because of a churn "
+        "prediction. Feature-importance measures and SHAP values "
+        "describe model behavior, not causation. Age and AgeGroup "
+        "contain overlapping information, so their importance values "
+        "should not be interpreted as independent contributions. "
+        "Negative or near-zero importance alone is not sufficient "
+        "evidence for removing a feature. Monitor model performance "
+        "and subgroup outcomes before real-world deployment."
     )
 
 def render_coefficient_analysis(coefficients):
