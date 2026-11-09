@@ -6,20 +6,20 @@ The classification threshold is retained from validation-based
 model selection.
 """
 
+import numpy as np
 from sklearn.metrics import average_precision_score
 
 from src.data_split import split_dataset
 from src.evaluation import generate_classification_report
-from src.modeling import build_baseline_models, evaluate_model
-
-
-CHURN_THRESHOLD = 0.65
-SELECTED_MODEL_NAME = "logistic_regression_balanced"
+from src.model_selection import MODEL_NAMES
+from src.modeling import build_candidate_models, evaluate_model
 
 
 def train_and_evaluate_final_model(
     processed_data,
-    threshold: float = CHURN_THRESHOLD,
+    *,
+    threshold: float,
+    model_name: str,
 ) -> tuple:
     """
     Train the selected model on the original training partition
@@ -31,11 +31,24 @@ def train_and_evaluate_final_model(
         Fitted model and evaluation results.
     """
 
+    if isinstance(threshold, (bool, np.bool_)) or not isinstance(
+        threshold, (int, float, np.integer, np.floating)
+    ):
+        raise ValueError("threshold must be numeric and between 0 and 1.")
+    if not np.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise ValueError("threshold must be numeric and between 0 and 1.")
+    if not isinstance(model_name, str) or not model_name:
+        raise ValueError("model_name must be a non-empty candidate name.")
+
+    models = build_candidate_models()
+    if model_name not in models:
+        raise ValueError(f"Unknown final model: {model_name}")
+
     # Reproduce the established stratified 80/20 split.
     X_train, X_test, y_train, y_test = split_dataset(processed_data)
 
-    # Build a fresh instance of the selected model.
-    model = build_baseline_models()[SELECTED_MODEL_NAME]
+    # Build a fresh instance of the explicitly selected model.
+    model = models[model_name]
 
     # Fit exclusively on the original training partition.
     model.fit(X_train, y_train)
@@ -72,8 +85,8 @@ def train_and_evaluate_final_model(
     )
 
     results = {
-        "model_name": SELECTED_MODEL_NAME,
-        "algorithm": "Balanced Logistic Regression",
+        "model_name": model_name,
+        "algorithm": MODEL_NAMES[model_name],
         "threshold": float(threshold),
         "training_records": int(len(X_train)),
         "test_records": int(len(X_test)),

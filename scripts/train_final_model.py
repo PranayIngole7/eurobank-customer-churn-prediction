@@ -16,7 +16,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.feature_engineering import engineer_features
+from src.data_split import split_dataset
 from src.final_model_training import train_and_evaluate_final_model
+from src.model_selection import run_validation_selection
 from src.model_persistence import create_model_metadata, save_model
 
 
@@ -46,6 +48,7 @@ def generate_markdown_report(results: dict) -> str:
         f"- Model: {results['model_name']}",
         f"- Algorithm: {results['algorithm']}",
         f"- Classification threshold: {results['threshold']}",
+        f"- Validation selection rationale: {results['selection_rule']}",
         f"- Training records: {results['training_records']}",
         f"- Test records: {results['test_records']}",
         "",
@@ -98,7 +101,7 @@ def generate_markdown_report(results: dict) -> str:
         "- The original dataset was split using stratified 80/20 sampling.",
         "- The model was fitted exclusively on the original training partition.",
         "- The original test partition was used exclusively for final evaluation.",
-        "- The classification threshold of 0.65 was selected using validation data.",
+        "- Candidate models and the decision threshold were selected using only the internal validation split.",
         "- The test results were not used to tune the model, threshold, or features.",
         "- Feature preprocessing was fitted as part of the training pipeline.",
         "",
@@ -129,10 +132,49 @@ def main():
 
     print(f"Feature-engineered records: {len(processed_data)}")
 
-    # 3. Train and evaluate the final selected model.
-    model, results = train_and_evaluate_final_model(
-        processed_data
+    # 3. Select model and threshold using only the internal validation data.
+    X_train, _, y_train, _ = split_dataset(processed_data)
+    validation_selection = run_validation_selection(X_train, y_train)
+    selection = validation_selection["selection"]
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    validation_selection_report = {
+        "evaluation_dataset": "validation",
+        "validation_records": int(
+            len(validation_selection["y_validation"])
+        ),
+        "candidate_metrics_at_threshold_0_50": (
+            validation_selection["comparison"].to_dict(orient="records")
+        ),
+        "selected_model": selection,
+    }
+    (REPORTS_DIR / "model-selection-validation.json").write_text(
+        json.dumps(validation_selection_report, indent=2),
+        encoding="utf-8",
     )
+    validation_selection["comparison"].to_csv(
+        REPORTS_DIR / "model-comparison-validation.csv",
+        index=False,
+    )
+    validation_selection["threshold_comparison"].to_csv(
+        REPORTS_DIR / "model-threshold-comparison-validation.csv",
+        index=False,
+    )
+    validation_selection["threshold_comparison"].loc[
+        lambda frame: frame["model_name"] == selection["model_name"]
+    ].drop(columns=["model_name", "average_precision", "roc_auc"]).to_csv(
+        REPORTS_DIR / "threshold-comparison.csv",
+        index=False,
+    )
+
+    # 4. Retrain on all original training data and evaluate the test set once.
+    model, results = train_and_evaluate_final_model(
+        processed_data,
+        threshold=selection["threshold"],
+        model_name=selection["model_name"],
+    )
+    results["selection_rule"] = selection["selection_rule"]
+    results["validation_metrics"] = selection["validation_metrics"]
 
     # Generate and persist model metadata and fitted model.
     metadata = create_model_metadata(

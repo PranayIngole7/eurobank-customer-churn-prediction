@@ -31,6 +31,15 @@ def processed_data():
             "HasCrCard": index % 2,
             "IsActiveMember": (index + 1) % 2,
             "HasBalance": int(index > 0),
+            "BalanceToSalaryRatio": (1000.0 * index) / (30000.0 + index),
+            "ProductDensityIndicator": (
+                (1 + (index % 2)) / (index % 11)
+                if index % 11 > 0 else 0.0
+            ),
+            "EngagementProductInteraction": (
+                (index + 1) % 2
+            ) * (1 + (index % 2)),
+            "AgeTenureInteraction": (25 + (index % 40)) * (index % 11),
             "Exited": index % 2,
         })
 
@@ -62,9 +71,9 @@ def test_final_model_uses_original_training_partition_only(
 
     monkeypatch.setattr(
         final_training,
-        "build_baseline_models",
+        "build_candidate_models",
         lambda: {
-            final_training.SELECTED_MODEL_NAME: recording_model
+            "logistic_regression_balanced": recording_model
         },
     )
 
@@ -73,7 +82,11 @@ def test_final_model_uses_original_training_partition_only(
     )
 
     model, results = (
-        final_training.train_and_evaluate_final_model(processed_data)
+        final_training.train_and_evaluate_final_model(
+            processed_data,
+            threshold=0.65,
+            model_name="logistic_regression_balanced",
+        )
     )
 
     assert model is recording_model
@@ -92,14 +105,16 @@ def test_final_model_preserves_selected_model_and_threshold(
 
     monkeypatch.setattr(
         final_training,
-        "build_baseline_models",
+        "build_candidate_models",
         lambda: {
-            final_training.SELECTED_MODEL_NAME: recording_model
+            "logistic_regression_balanced": recording_model
         },
     )
 
     _, results = final_training.train_and_evaluate_final_model(
-        processed_data
+        processed_data,
+        threshold=0.65,
+        model_name="logistic_regression_balanced",
     )
 
     assert results["model_name"] == (
@@ -117,14 +132,16 @@ def test_final_model_returns_expected_evaluation_metrics(
 
     monkeypatch.setattr(
         final_training,
-        "build_baseline_models",
+        "build_candidate_models",
         lambda: {
-            final_training.SELECTED_MODEL_NAME: recording_model
+            "logistic_regression_balanced": recording_model
         },
     )
 
     _, results = final_training.train_and_evaluate_final_model(
-        processed_data
+        processed_data,
+        threshold=0.65,
+        model_name="logistic_regression_balanced",
     )
 
     expected_metrics = {
@@ -158,15 +175,16 @@ def test_final_model_supports_explicit_threshold(
 
     monkeypatch.setattr(
         final_training,
-        "build_baseline_models",
+        "build_candidate_models",
         lambda: {
-            final_training.SELECTED_MODEL_NAME: recording_model
+            "logistic_regression_balanced": recording_model
         },
     )
 
     _, results = final_training.train_and_evaluate_final_model(
         processed_data,
         threshold=0.70,
+        model_name="logistic_regression_balanced",
     )
 
     assert results["threshold"] == 0.70
@@ -185,9 +203,9 @@ def test_final_model_rejects_invalid_thresholds(
 
     monkeypatch.setattr(
         final_training,
-        "build_baseline_models",
+        "build_candidate_models",
         lambda: {
-            final_training.SELECTED_MODEL_NAME: recording_model
+            "logistic_regression_balanced": recording_model
         },
     )
 
@@ -195,4 +213,19 @@ def test_final_model_rejects_invalid_thresholds(
         final_training.train_and_evaluate_final_model(
             processed_data,
             threshold=threshold,
+            model_name="logistic_regression_balanced",
+        )
+
+
+def test_final_model_requires_explicit_selection_inputs(processed_data):
+    with pytest.raises(TypeError, match="threshold"):
+        final_training.train_and_evaluate_final_model(processed_data)
+
+
+def test_final_model_rejects_unknown_selected_model(processed_data):
+    with pytest.raises(ValueError, match="Unknown final model"):
+        final_training.train_and_evaluate_final_model(
+            processed_data,
+            threshold=0.3,
+            model_name="not_a_candidate",
         )

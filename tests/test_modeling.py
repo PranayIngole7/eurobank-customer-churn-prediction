@@ -3,11 +3,14 @@ import pandas as pd
 import pytest
 
 from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
+from sklearn.tree import DecisionTreeClassifier
 
 from src.modeling import (
     build_baseline_models,
+    build_candidate_models,
     evaluate_model,
 )
 from src.preprocessing import FEATURE_COLUMNS
@@ -37,6 +40,15 @@ def sample_training_data():
             "HasCrCard": index % 2,
             "IsActiveMember": (index + 1) % 2,
             "HasBalance": int(index > 0),
+            "BalanceToSalaryRatio": (1000.0 * index) / (30000.0 + index),
+            "ProductDensityIndicator": (
+                (1 + (index % 2)) / (index % 11)
+                if index % 11 > 0 else 0.0
+            ),
+            "EngagementProductInteraction": (
+                (index + 1) % 2
+            ) * (1 + (index % 2)),
+            "AgeTenureInteraction": (25 + (index % 40)) * (index % 11),
             "Exited": index % 2,
         })
 
@@ -60,6 +72,40 @@ def test_build_baseline_models_returns_expected_models():
     assert isinstance(models["dummy"], DummyClassifier)
     assert isinstance(models["logistic_regression"], Pipeline)
     assert isinstance(models["logistic_regression_balanced"], Pipeline)
+
+
+def test_candidate_models_include_all_required_algorithms():
+    models = build_candidate_models()
+
+    assert set(models) == {
+        "dummy",
+        "logistic_regression",
+        "logistic_regression_balanced",
+        "decision_tree",
+        "random_forest",
+        "gradient_boosting",
+    }
+
+    assert isinstance(
+        models["decision_tree"].named_steps["classifier"],
+        DecisionTreeClassifier,
+    )
+    assert isinstance(
+        models["random_forest"].named_steps["classifier"],
+        RandomForestClassifier,
+    )
+    assert isinstance(
+        models["gradient_boosting"].named_steps["classifier"],
+        GradientBoostingClassifier,
+    )
+    for model_name in (
+        "decision_tree",
+        "random_forest",
+        "gradient_boosting",
+    ):
+        assert isinstance(models[model_name], Pipeline)
+        assert models[model_name].named_steps["preprocessor"] is not None
+        assert models[model_name].named_steps["classifier"].random_state == 42
 
 
 def test_models_are_unfitted_initially():
@@ -104,6 +150,19 @@ def test_models_can_be_fitted(sample_training_data):
         assert hasattr(model, "classes_")
 
 
+def test_candidate_models_fit_and_predict_probabilities(sample_training_data):
+    X, y = sample_training_data
+    models = build_candidate_models()
+
+    for model in models.values():
+        model.fit(X, y)
+        probabilities = model.predict_proba(X.iloc[:5])
+
+        assert probabilities.shape == (5, 2)
+        assert np.isfinite(probabilities).all()
+        np.testing.assert_allclose(probabilities.sum(axis=1), 1.0)
+
+
 def test_evaluation_returns_expected_metrics(sample_training_data):
     X, y = sample_training_data
     model = build_baseline_models()["logistic_regression"]
@@ -118,6 +177,7 @@ def test_evaluation_returns_expected_metrics(sample_training_data):
         "recall",
         "f1_score",
         "roc_auc",
+        "average_precision",
         "confusion_matrix",
     }
 

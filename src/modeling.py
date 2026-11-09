@@ -11,9 +11,11 @@ Provides:
 import numpy as np
 
 from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
     confusion_matrix,
     f1_score,
     precision_score,
@@ -21,6 +23,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.pipeline import Pipeline
+from sklearn.tree import DecisionTreeClassifier
 
 from src.preprocessing import build_preprocessor
 
@@ -76,6 +79,64 @@ def build_baseline_models() -> dict:
     }
 
 
+def build_candidate_models() -> dict:
+    """Build fresh pipelines for all algorithms compared on validation data."""
+    models = build_baseline_models()
+
+    models["decision_tree"] = Pipeline(
+        steps=[
+            ("preprocessor", build_preprocessor()),
+            (
+                "classifier",
+                DecisionTreeClassifier(
+                    random_state=42,
+                    max_depth=6,
+                    min_samples_split=20,
+                    min_samples_leaf=10,
+                    class_weight="balanced",
+                ),
+            ),
+        ]
+    )
+
+    models["random_forest"] = Pipeline(
+        steps=[
+            ("preprocessor", build_preprocessor()),
+            (
+                "classifier",
+                RandomForestClassifier(
+                    n_estimators=120,
+                    random_state=42,
+                    max_depth=10,
+                    min_samples_split=10,
+                    min_samples_leaf=5,
+                    class_weight="balanced",
+                    n_jobs=1,
+                ),
+            ),
+        ]
+    )
+
+    models["gradient_boosting"] = Pipeline(
+        steps=[
+            ("preprocessor", build_preprocessor()),
+            (
+                "classifier",
+                GradientBoostingClassifier(
+                    random_state=42,
+                    n_estimators=120,
+                    learning_rate=0.05,
+                    max_depth=2,
+                    min_samples_leaf=10,
+                    subsample=0.8,
+                ),
+            ),
+        ]
+    )
+
+    return models
+
+
 def evaluate_model(
     model,
     X_test,
@@ -103,7 +164,7 @@ def evaluate_model(
     -------
     dict
         Accuracy, precision, recall, F1-score,
-        ROC-AUC and confusion matrix.
+        ROC-AUC, average precision and confusion matrix.
     """
 
     if (
@@ -118,7 +179,7 @@ def evaluate_model(
     if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
         raise ValueError("Threshold must be between 0 and 1.")
 
-    probabilities = model.predict_proba(X_test)
+    probabilities = np.asarray(model.predict_proba(X_test))
 
     classes = list(model.classes_)
 
@@ -126,6 +187,21 @@ def evaluate_model(
         raise ValueError("Model does not contain positive class 1.")
 
     positive_class_index = classes.index(1)
+
+    if probabilities.ndim != 2 or probabilities.shape != (
+        len(X_test),
+        len(classes),
+    ):
+        raise ValueError("Model produced an invalid probability array.")
+
+    if not np.isfinite(probabilities).all():
+        raise ValueError("Model produced invalid prediction probabilities.")
+
+    if ((probabilities < 0) | (probabilities > 1)).any():
+        raise ValueError("Model probabilities must be between 0 and 1.")
+
+    if not np.allclose(probabilities.sum(axis=1), 1.0, atol=1e-6):
+        raise ValueError("Model probabilities must sum to 1 for each row.")
 
     churn_probabilities = probabilities[:, positive_class_index]
 
@@ -140,7 +216,7 @@ def evaluate_model(
         labels=[0, 1],
     )
 
-    return {
+    result = {
         "accuracy": accuracy_score(y_test, predictions),
         "precision": precision_score(
             y_test,
@@ -164,5 +240,11 @@ def evaluate_model(
             y_test,
             churn_probabilities,
         ),
+        "average_precision": average_precision_score(
+            y_test,
+            churn_probabilities,
+        ),
         "confusion_matrix": matrix.tolist(),
     }
+
+    return result
