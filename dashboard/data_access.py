@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -19,12 +20,22 @@ FEATURE_COEFFICIENTS_PATH = REPORTS_DIR / "feature-coefficients.csv"
 PERMUTATION_IMPORTANCE_PATH = (
     REPORTS_DIR / "permutation-importance.csv"
 )
+SHAP_GLOBAL_IMPORTANCE_PATH = REPORTS_DIR / "shap-global-importance.csv"
 
 FAIRNESS_GROUP_METRICS_PATH = (
     REPORTS_DIR / "fairness-group-metrics.csv"
 )
 
 FAIRNESS_SUMMARY_PATH = REPORTS_DIR / "fairness-summary.json"
+PARTIAL_DEPENDENCE_FIGURES = {
+    feature: REPORTS_DIR / "figures" / f"pdp-{feature}.png"
+    for feature in (
+        "BalanceToSalaryRatio",
+        "ProductDensityIndicator",
+        "EngagementProductInteraction",
+        "AgeTenureInteraction",
+    )
+}
 
 REQUIRED_THRESHOLD_COLUMNS = {
     "threshold",
@@ -60,6 +71,10 @@ REQUIRED_PERMUTATION_COLUMNS = {
     "importance_mean",
     "importance_std",
 }
+REQUIRED_SHAP_COLUMNS = {
+    "feature",
+    "mean_absolute_shap",
+}
 
 REQUIRED_FAIRNESS_COLUMNS = {
     "attribute",
@@ -76,6 +91,7 @@ REQUIRED_FAIRNESS_COLUMNS = {
     "predicted_churn_rate",
     "accuracy",
     "precision",
+    "f1_score",
     "tpr",
     "fpr",
     "fnr",
@@ -257,8 +273,45 @@ def load_permutation_importance():
 
     return data
 
+
+def load_shap_global_importance():
+    """Load genuine global SHAP values and validate feature-level output."""
+    data = _load_csv_artifact(
+        SHAP_GLOBAL_IMPORTANCE_PATH,
+        REQUIRED_SHAP_COLUMNS,
+        "Global SHAP importance",
+    )
+    data["mean_absolute_shap"] = pd.to_numeric(
+        data["mean_absolute_shap"],
+        errors="raise",
+    )
+    if not np.isfinite(data["mean_absolute_shap"]).all():
+        raise ValueError("Global SHAP importance contains non-finite values.")
+    if (data["mean_absolute_shap"] < 0).any():
+        raise ValueError("Mean absolute SHAP values cannot be negative.")
+    if data["feature"].isna().any() or data["feature"].duplicated().any():
+        raise ValueError(
+            "Global SHAP importance has missing or duplicate features."
+        )
+    return data
+
+
+def load_partial_dependence_figures():
+    """Return generated partial-dependence figures or report missing files."""
+    missing = [
+        str(path)
+        for path in PARTIAL_DEPENDENCE_FIGURES.values()
+        if not path.is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "Missing partial-dependence figures: " + ", ".join(missing)
+        )
+    return PARTIAL_DEPENDENCE_FIGURES.copy()
+
+
 def load_fairness_group_metrics():
-    """Load and validate validation-based fairness group metrics."""
+    """Load and validate held-out-test fairness group metrics."""
     data = _load_csv_artifact(
         FAIRNESS_GROUP_METRICS_PATH,
         REQUIRED_FAIRNESS_COLUMNS,
@@ -281,6 +334,7 @@ def load_fairness_group_metrics():
         "predicted_churn_rate",
         "accuracy",
         "precision",
+        "f1_score",
         "tpr",
         "fpr",
         "fnr",
@@ -303,7 +357,12 @@ def load_fairness_group_metrics():
         )
 
     required_numeric = data[
-        count_columns + [column for column in rate_columns if column != "precision"]
+        count_columns
+        + [
+            column
+            for column in rate_columns
+            if column not in {"precision", "f1_score"}
+        ]
     ]
 
     if required_numeric.isna().any().any():
@@ -380,9 +439,9 @@ def load_fairness_summary():
             f"Fairness summary is missing fields: {sorted(missing)}"
         )
 
-    if summary["evaluation_dataset"] != "validation":
+    if summary["evaluation_dataset"] != "test":
         raise ValueError(
-            "Fairness summary must use the validation dataset."
+            "Fairness summary must use the held-out test dataset."
         )
 
     if (

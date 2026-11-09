@@ -7,7 +7,11 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.components import render_header
-from dashboard.services import get_prediction_service
+from dashboard.services import (
+    build_prediction_output,
+    get_prediction_service,
+    prepare_probability_distribution,
+)
 
 
 REQUIRED_COLUMNS = {
@@ -215,6 +219,21 @@ def render_batch_summary(results):
             use_container_width=True,
         )
 
+    st.subheader("Predicted Churn Probability Distribution")
+    st.caption(
+        "Distribution of model-predicted probabilities for this uploaded "
+        "batch. Probabilities are not observed churn outcomes or the "
+        "separate risk categories above."
+    )
+    probability_distribution = prepare_probability_distribution(
+        results["churn_probability"].to_numpy()
+    )
+    st.bar_chart(
+        probability_distribution,
+        x="Probability range",
+        y="Customers",
+    )
+
 
 def render_batch_prediction():
     """Render the batch customer prediction interface."""
@@ -279,10 +298,8 @@ def render_batch_prediction():
 
     if {"CustomerId", "Surname"}.intersection(customers.columns):
         st.warning(
-            "The uploaded file contains customer identifiers or names. "
-            "These columns are not used by the model but will be "
-            "preserved in the downloadable output. Avoid unnecessary "
-            "personal information."
+            "CustomerId and Surname are ignored by the model and will be "
+            "excluded from previews and downloaded prediction results."
         )
 
     extra_columns = (
@@ -291,14 +308,14 @@ def render_batch_prediction():
 
     if extra_columns:
         st.caption(
-            "Additional columns will be preserved in the output "
-            "but ignored by the prediction model: "
+            "Additional columns will be ignored and excluded from "
+            "prediction output: "
             f"{sorted(extra_columns)}"
         )
 
     with st.expander("Preview Uploaded Customer Data"):
         st.dataframe(
-            customers.head(10),
+            customers[list(sorted(REQUIRED_COLUMNS))].head(10),
             use_container_width=True,
         )
 
@@ -325,13 +342,7 @@ def render_batch_prediction():
                     "the uploaded customer count."
                 )
 
-            results = pd.concat(
-                [
-                    customers.reset_index(drop=True),
-                    predictions.reset_index(drop=True),
-                ],
-                axis=1,
-            )
+            results = build_prediction_output(customers, predictions)
 
         except (FileNotFoundError, ValueError, TypeError, OSError) as exc:
             st.error(f"Batch prediction failed: {exc}")

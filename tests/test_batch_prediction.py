@@ -146,6 +146,52 @@ def test_validate_batch_input_accepts_valid_customers(valid_customers):
     batch.validate_batch_input(valid_customers)
 
 
+def test_batch_summary_renders_probability_distribution(monkeypatch):
+    captured = {"headings": [], "charts": []}
+
+    class FakeColumn:
+        def metric(self, *args, **kwargs):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+    monkeypatch.setattr(
+        batch.st, "header", captured["headings"].append
+    )
+    monkeypatch.setattr(
+        batch.st, "subheader", captured["headings"].append
+    )
+    monkeypatch.setattr(batch.st, "caption", lambda value: None)
+    monkeypatch.setattr(
+        batch.st,
+        "columns",
+        lambda count: [
+            FakeColumn()
+            for _ in range(2 if isinstance(count, list) else count)
+        ],
+    )
+    monkeypatch.setattr(
+        batch.st,
+        "bar_chart",
+        lambda data, **kwargs: captured["charts"].append(data),
+    )
+    monkeypatch.setattr(batch.st, "dataframe", lambda *args, **kwargs: None)
+
+    batch.render_batch_summary(pd.DataFrame({
+        "churn_probability": [0.1, 0.55, 0.99],
+        "risk_category": ["Low", "High", "Critical"],
+        "churn_prediction": [0, 1, 1],
+    }))
+
+    assert "Predicted Churn Probability Distribution" in captured["headings"]
+    assert len(captured["charts"]) == 2
+    assert captured["charts"][1]["Customers"].sum() == 3
+
+
 def test_validate_batch_input_accepts_extra_columns(valid_customers):
     valid_customers["CustomerId"] = 12345
     valid_customers["Surname"] = "Example"

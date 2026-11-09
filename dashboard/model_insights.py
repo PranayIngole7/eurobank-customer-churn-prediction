@@ -6,8 +6,11 @@ import streamlit as st
 from dashboard.components import render_header, render_section_header
 from dashboard.data_access import (
     load_test_evaluation,
+    load_model_metadata,
     load_feature_coefficients,
     load_permutation_importance,
+    load_shap_global_importance,
+    load_partial_dependence_figures,
     load_fairness_group_metrics,
     load_fairness_summary,
 )
@@ -102,25 +105,25 @@ def render_evaluation_details(evaluation):
     )
 
     st.warning(
-        "Churn detection remains challenging: the model identifies "
-        "approximately 54% of actual churners, with approximately "
-        "51% precision. Therefore, predictions should support "
-        "prioritization rather than be treated as certain outcomes."
+        "Churn detection remains imperfect. Review the displayed "
+        "precision, recall and confusion matrix when setting operational "
+        "expectations; predictions should support prioritization rather "
+        "than be treated as certain outcomes."
     )
 
-def render_model_limitations():
+def render_model_limitations(algorithm):
     """Explain limitations and responsible use of the model."""
 
     st.header("Model Limitations and Responsible Use")
 
     st.markdown(
-        """
-        **1. Moderate churn detection performance**
+        f"""
+        **1. Imperfect churn detection**
 
-        The held-out test recall for churners is approximately 54%,
-        meaning the model misses a substantial proportion of actual
-        churn cases. Churn-class precision is approximately 51%,
-        meaning some customers flagged by the model will not churn.
+        The final held-out test metrics are displayed above. Every
+        classification threshold trades off false churn alerts against
+        missed churners; use the reported precision, recall and confusion
+        matrix when setting operational expectations.
 
         **2. Class imbalance**
 
@@ -134,11 +137,12 @@ def render_model_limitations():
         automatically be interpreted as perfectly calibrated real-world
         churn probabilities.
 
-        **4. Logistic regression assumptions**
+        **4. Algorithm-specific assumptions**
 
-        The selected model uses a linear relationship in transformed
-        feature space. It may not capture every nonlinear relationship
-        or complex interaction between customer characteristics.
+        The selected model is **{algorithm}**. Its learned structure may
+        not capture every relationship present in future customer
+        populations. Explanations reflect this fitted model, not an
+        independently verified business mechanism.
 
         **5. Correlated and overlapping features**
 
@@ -296,16 +300,44 @@ def render_permutation_importance(importance):
     )
 
 
-def render_explainability(coefficients, importance):
+def render_shap_importance(shap_importance):
+    """Display global mean absolute SHAP attributions."""
+    render_section_header(
+        "SHAP Global Feature Importance",
+        "Mean absolute contribution to model-predicted churn probability "
+        "on a reproducible validation sample.",
+    )
+    display = shap_importance.sort_values(
+        "mean_absolute_shap",
+        ascending=True,
+    )
+    st.bar_chart(
+        display,
+        x="mean_absolute_shap",
+        y="feature",
+        horizontal=True,
+        x_label="Mean absolute SHAP value",
+        y_label="Model input feature",
+    )
+    st.caption(
+        "SHAP values explain model outputs, not causes. Local SHAP values "
+        "describe one record's attribution relative to the sampled background."
+    )
+
+
+def render_explainability(coefficients, importance, shap_importance):
     """Render global model explainability sections."""
 
     st.header("Model Explainability")
 
-    render_coefficient_analysis(coefficients)
-
-    st.divider()
+    if coefficients is not None:
+        render_coefficient_analysis(coefficients)
+        st.divider()
 
     render_permutation_importance(importance)
+
+    st.divider()
+    render_shap_importance(shap_importance)
 
     st.warning(
         "Interpretation limitations: coefficients and permutation "
@@ -315,6 +347,22 @@ def render_explainability(coefficients, importance):
         "Negative or near-zero importance alone is not sufficient "
         "evidence for removing a feature."
     )
+
+def render_partial_dependence(figures):
+    """Display saved PDP figures for the four engineered features."""
+
+    st.subheader("Partial Dependence")
+    st.caption(
+        "Each curve averages predicted churn probability across the "
+        "evaluation records while varying one feature. Engineered "
+        "interactions and correlated inputs can create combinations that "
+        "are uncommon in real customers; these plots are descriptive, "
+        "not causal."
+    )
+    for feature, figure_path in figures.items():
+        st.markdown(f"##### {feature}")
+        st.image(str(figure_path), caption=f"Partial dependence for {feature}")
+
 
 def format_rate(value):
     """Format a rate as a percentage, preserving missing values."""
@@ -411,6 +459,11 @@ def render_fairness_group_table(groups):
                 "Group": row["group"],
                 "Accuracy": format_rate(row["accuracy"]),
                 "Precision": format_rate(row["precision"]),
+                "F1-score": format_rate(row["f1_score"]),
+                "TP": int(row["true_positive"]),
+                "TN": int(row["true_negative"]),
+                "FP": int(row["false_positive"]),
+                "FN": int(row["false_negative"]),
                 "TPR": format_rate(row["tpr"]),
                 "TPR (95% CI)": format_rate_with_interval(row, "tpr"),
                 "FPR": format_rate(row["fpr"]),
@@ -445,7 +498,7 @@ def render_fairness_attribute(
     st.subheader(f"{attribute} Analysis")
 
     st.caption(
-        f"Validation dataset | {len(groups)} groups | "
+        f"Held-out test dataset | {len(groups)} groups | "
         f"{int(groups['sample_count'].sum())} customers"
     )
 
@@ -462,10 +515,11 @@ def render_fairness_overview(groups, summary):
     st.header("Fairness and Group Performance")
 
     st.warning(
-        "This analysis uses the validation dataset, not the held-out "
-        "test dataset. Differences indicate variations in observed "
-        "model performance; they do not independently establish "
-        "discrimination or prove that a model is fair or unfair."
+        "This is a post-selection audit on the held-out test dataset. "
+        "Test results were not used to fit, tune, or select the model or "
+        "threshold. Differences indicate observed performance variation; "
+        "they do not independently establish discrimination or prove "
+        "that a model is fair or unfair."
     )
 
     st.caption(
@@ -547,8 +601,15 @@ def render_model_insights():
 
     try:
         evaluation = load_test_evaluation()
-        coefficients = load_feature_coefficients()
+        metadata = load_model_metadata()
+        coefficients = (
+            load_feature_coefficients()
+            if "Logistic Regression" in metadata["algorithm"]
+            else None
+        )
         importance = load_permutation_importance()
+        shap_importance = load_shap_global_importance()
+        pdp_figures = load_partial_dependence_figures()
         fairness_groups = load_fairness_group_metrics()
         fairness_summary = load_fairness_summary()
 
@@ -560,11 +621,14 @@ def render_model_insights():
 
     st.divider()
 
-    render_model_limitations()
+    render_model_limitations(metadata["algorithm"])
 
     st.divider()
 
-    render_explainability(coefficients, importance)
+    render_explainability(coefficients, importance, shap_importance)
+
+    st.divider()
+    render_partial_dependence(pdp_figures)
 
     st.divider()
 

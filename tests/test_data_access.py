@@ -95,6 +95,7 @@ def valid_fairness_row(attribute="Gender", group="Female"):
         "predicted_churn_rate": 0.30,
         "accuracy": 0.80,
         "precision": 0.666667,
+        "f1_score": 0.666667,
         "tpr": 0.666667,
         "fpr": 0.142857,
         "fnr": 0.333333,
@@ -130,10 +131,10 @@ def valid_fairness_summary():
         }
 
     return {
-        "evaluation_dataset": "validation",
+        "evaluation_dataset": "test",
         "records": 2000,
-        "model": "logistic_regression_balanced",
-        "threshold": 0.65,
+        "model": "gradient_boosting",
+        "threshold": 0.30,
         "audit_attributes": ["Gender", "Geography", "AgeGroup"],
         "confidence_intervals": {
             "method": "Wilson score interval",
@@ -156,8 +157,13 @@ def artifact_files(tmp_path, monkeypatch):
     paths = {
         "coefficients": tmp_path / "feature-coefficients.csv",
         "permutation": tmp_path / "permutation-importance.csv",
+        "shap": tmp_path / "shap-global-importance.csv",
         "fairness_groups": tmp_path / "fairness-group-metrics.csv",
         "fairness_summary": tmp_path / "fairness-summary.json",
+        "partial_figures": {
+            feature: tmp_path / f"pdp-{feature}.png"
+            for feature in data.PARTIAL_DEPENDENCE_FIGURES
+        },
     }
 
     monkeypatch.setattr(
@@ -167,11 +173,19 @@ def artifact_files(tmp_path, monkeypatch):
         data, "PERMUTATION_IMPORTANCE_PATH", paths["permutation"]
     )
     monkeypatch.setattr(
+        data, "SHAP_GLOBAL_IMPORTANCE_PATH", paths["shap"]
+    )
+    monkeypatch.setattr(
         data, "FAIRNESS_GROUP_METRICS_PATH", paths["fairness_groups"]
     )
     monkeypatch.setattr(
         data, "FAIRNESS_SUMMARY_PATH", paths["fairness_summary"]
     )
+    monkeypatch.setattr(
+        data, "PARTIAL_DEPENDENCE_FIGURES", paths["partial_figures"]
+    )
+    for path in paths["partial_figures"].values():
+        path.write_bytes(b"test figure")
 
     pd.DataFrame([
         {
@@ -190,6 +204,12 @@ def artifact_files(tmp_path, monkeypatch):
             "importance_std": 0.0002,
         }
     ]).to_csv(paths["permutation"], index=False)
+    pd.DataFrame([
+        {
+            "feature": "AgeTenureInteraction",
+            "mean_absolute_shap": 0.032,
+        }
+    ]).to_csv(paths["shap"], index=False)
 
     fairness_rows = [
         valid_fairness_row("Gender", "Female"),
@@ -212,19 +232,44 @@ def artifact_files(tmp_path, monkeypatch):
 def test_all_model_insight_artifacts_load_successfully(artifact_files):
     coefficients = data.load_feature_coefficients()
     permutation = data.load_permutation_importance()
+    shap_importance = data.load_shap_global_importance()
     fairness_groups = data.load_fairness_group_metrics()
     fairness_summary = data.load_fairness_summary()
 
     assert len(coefficients) == 1
     assert len(permutation) == 1
+    assert len(shap_importance) == 1
+    assert shap_importance.loc[0, "mean_absolute_shap"] == pytest.approx(0.032)
     assert len(fairness_groups) == 3
 
-    assert fairness_summary["evaluation_dataset"] == "validation"
+    assert fairness_summary["evaluation_dataset"] == "test"
     assert set(fairness_summary["attributes"]) == {
         "Gender",
         "Geography",
         "AgeGroup",
     }
+    assert data.load_partial_dependence_figures() == artifact_files[
+        "partial_figures"
+    ]
+
+
+def test_missing_partial_dependence_figure_is_reported(artifact_files):
+    artifact_files["partial_figures"]["AgeTenureInteraction"].unlink()
+
+    with pytest.raises(FileNotFoundError, match="partial-dependence figures"):
+        data.load_partial_dependence_figures()
+
+
+def test_fairness_summary_rejects_validation_selection_data(artifact_files):
+    summary = valid_fairness_summary()
+    summary["evaluation_dataset"] = "validation"
+    artifact_files["fairness_summary"].write_text(
+        json.dumps(summary),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="held-out test"):
+        data.load_fairness_summary()
 
 
 def test_missing_artifact_raises_file_not_found(artifact_files):
@@ -280,6 +325,18 @@ def test_negative_permutation_importance_is_preserved(artifact_files):
     result = data.load_permutation_importance()
 
     assert result.loc[0, "importance_mean"] < 0
+
+
+def test_shap_importance_rejects_non_finite_values(artifact_files):
+    pd.DataFrame([
+        {
+            "feature": "Age",
+            "mean_absolute_shap": float("inf"),
+        }
+    ]).to_csv(artifact_files["shap"], index=False)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        data.load_shap_global_importance()
 
 
 def test_fairness_group_metrics_accept_null_precision(artifact_files):
