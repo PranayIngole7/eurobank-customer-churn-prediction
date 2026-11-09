@@ -1,48 +1,53 @@
 {
-    "evaluation_dataset": "validation",
-    "records": 2000,
-    "threshold": 0.65,
-    "classification_report": {
-        "Retained (0)": {
-            "precision": 0.8797229219143576,
-            "recall": 0.8769617074701821,
-            "f1-score": 0.8783401446086136,
-            "support": 1593.0
-        },
-        "Churned (1)": {
-            "precision": 0.5242718446601942,
-            "recall": 0.5307125307125307,
-            "f1-score": 0.5274725274725275,
-            "support": 407.0
-        },
-        "accuracy": 0.8065,
-        "macro avg": {
-            "precision": 0.7019973832872759,
-            "recall": 0.7038371190913564,
-            "f1-score": 0.7029063360405705,
-            "support": 2000.0
-        },
-        "weighted avg": {
-            "precision": 0.8073886276931354,
-            "recall": 0.8065,
-            "f1-score": 0.8069385845214201,
-            "support": 2000.0
-        }
-    },
-    "accuracy": 0.8065,
-    "precision": 0.5242718446601942,
-    "recall": 0.5307125307125307,
-    "f1_score": 0.5274725274725275,
-    "roc_auc": 0.7795021523835084,
-    "average_precision": 0.524116812344164,
+  "evaluation_dataset": "validation",
+  "selected_model": "gradient_boosting",
+  "algorithm": "Gradient Boosting",
+  "threshold": 0.3,
+  "records": 2000,
+  "selection_rule": "For each model, select the threshold with highest validation F1-score among thresholds with precision >= 0.50; if none meet the floor, use maximum F1-score across its thresholds. Select the model with highest resulting F1-score; break ties by Average Precision, precision, fewer false positives, then model name.",
+  "metrics": {
+    "accuracy": 0.849,
+    "precision": 0.6356589147286822,
+    "recall": 0.6044226044226044,
+    "f1_score": 0.6196473551637279,
+    "roc_auc": 0.8515063599809363,
+    "average_precision": 0.6699012515033118,
     "confusion_matrix": [
-        [
-            1397,
-            196
-        ],
-        [
-            191,
-            216
-        ]
+      [
+        1452,
+        141
+      ],
+      [
+        161,
+        246
+      ]
     ]
+  },
+  "classification_report": {
+    "Retained (0)": {
+      "precision": 0.9001859888406696,
+      "recall": 0.911487758945386,
+      "f1-score": 0.9058016219588272,
+      "support": 1593.0
+    },
+    "Churned (1)": {
+      "precision": 0.6356589147286822,
+      "recall": 0.6044226044226044,
+      "f1-score": 0.6196473551637279,
+      "support": 407.0
+    },
+    "accuracy": 0.849,
+    "macro avg": {
+      "precision": 0.7679224517846759,
+      "recall": 0.7579551816839952,
+      "f1-score": 0.7627244885612776,
+      "support": 2000.0
+    },
+    "weighted avg": {
+      "precision": 0.8463547292588802,
+      "recall": 0.849,
+      "f1-score": 0.8475692286660244,
+      "support": 2000.0
+    }
+  }
 }

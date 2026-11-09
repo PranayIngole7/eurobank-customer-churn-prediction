@@ -1,90 +1,118 @@
-"""
-Generate actual validation evaluation artifacts.
-
-The model is fitted only on the internal training split.
-The validation split is used for evaluation.
-The original test split is never evaluated by this script.
-"""
+"""Compare candidate models and select a threshold using validation data only."""
 
 import json
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.data_split import split_dataset, split_training_data
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.data_split import split_dataset
 from src.evaluation import (
     generate_classification_report,
     plot_confusion_matrix,
-    plot_roc_curve,
     plot_precision_recall_curve,
+    plot_roc_curve,
 )
 from src.feature_engineering import engineer_features
-from src.modeling import build_baseline_models, evaluate_model
+from src.model_selection import run_validation_selection
+from src.modeling import evaluate_model
 
 
-DATA_PATH = Path("data/raw/european-bank.csv")
-REPORTS_DIR = Path("reports")
+DATA_PATH = PROJECT_ROOT / "data" / "raw" / "european-bank.csv"
+REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
-
-SELECTED_THRESHOLD = 0.65
 
 
 def main():
-    # 1. Load and prepare the dataset.
-    raw_data = pd.read_csv(DATA_PATH)
-    processed_data = engineer_features(raw_data)
+    if not DATA_PATH.is_file():
+        raise FileNotFoundError(f"Dataset not found: {DATA_PATH}")
 
-    # 2. Create the original training/test split.
-    #    The original test data is deliberately discarded.
+    processed_data = engineer_features(pd.read_csv(DATA_PATH))
+
+    # The held-out test partition is separated and discarded before selection.
     X_train, _, y_train, _ = split_dataset(processed_data)
+    selection_results = run_validation_selection(X_train, y_train)
 
-    # 3. Create internal training and validation splits.
-    (
-        X_internal_train,
+    selection = selection_results["selection"]
+    model = selection_results["models"][selection["model_name"]]
+    X_validation = selection_results["X_validation"]
+    y_validation = selection_results["y_validation"]
+    threshold = selection["threshold"]
+
+    metrics = evaluate_model(
+        model,
         X_validation,
-        y_internal_train,
         y_validation,
-    ) = split_training_data(X_train, y_train)
-
-    print("Dataset split")
-    print("-------------")
-    print(f"Internal training records: {len(X_internal_train)}")
-    print(f"Validation records:        {len(X_validation)}")
-
-    # 4. Build and fit the selected balanced Logistic Regression model.
-    model = build_baseline_models()["logistic_regression_balanced"]
-
-    model.fit(X_internal_train, y_internal_train)
-
-    # 5. Generate validation probabilities and predictions.
-    class_labels = list(model.classes_)
-    positive_class_index = class_labels.index(1)
-
-    probabilities = model.predict_proba(X_validation)[
-        :, positive_class_index
+        threshold=threshold,
+    )
+    probabilities = selection_results["validation_probabilities"][
+        selection["model_name"]
     ]
-
-    predictions = (
-        probabilities >= SELECTED_THRESHOLD
-    ).astype(int)
-
-    # 6. Generate the classification report.
-    classification_results = generate_classification_report(
+    predictions = (probabilities >= threshold).astype(int)
+    classification_report = generate_classification_report(
         y_validation,
         predictions,
     )
 
-    # 7. Generate evaluation metrics.
-    evaluation_results = evaluate_model(
-        model,
-        X_validation,
-        y_validation,
-        threshold=SELECTED_THRESHOLD,
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    comparison = selection_results["comparison"]
+    comparison.to_csv(
+        REPORTS_DIR / "model-comparison-validation.csv",
+        index=False,
+    )
+    all_thresholds = selection_results["threshold_comparison"]
+    all_thresholds.to_csv(
+        REPORTS_DIR / "model-threshold-comparison-validation.csv",
+        index=False,
+    )
+    selected_thresholds = all_thresholds[
+        all_thresholds["model_name"] == selection["model_name"]
+    ].drop(columns=["model_name", "average_precision", "roc_auc"])
+    selected_thresholds.to_csv(
+        REPORTS_DIR / "threshold-comparison.csv",
+        index=False,
     )
 
-    # 8. Generate actual validation visualizations.
-    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    selected_validation = {
+        "evaluation_dataset": "validation",
+        "selected_model": selection["model_name"],
+        "algorithm": selection["algorithm"],
+        "threshold": threshold,
+        "records": int(len(y_validation)),
+        "selection_rule": selection["selection_rule"],
+        "metrics": {
+            key: (
+                value
+                if key == "confusion_matrix"
+                else float(value)
+            )
+            for key, value in metrics.items()
+        },
+        "classification_report": classification_report,
+    }
+    (REPORTS_DIR / "classification-report-validation.json").write_text(
+        json.dumps(selected_validation, indent=2),
+        encoding="utf-8",
+    )
+
+    selection_report = {
+        "evaluation_dataset": "validation",
+        "validation_records": int(len(y_validation)),
+        "candidate_metrics_at_threshold_0_50": comparison.to_dict(
+            orient="records"
+        ),
+        "selected_model": selection,
+    }
+    (REPORTS_DIR / "model-selection-validation.json").write_text(
+        json.dumps(selection_report, indent=2),
+        encoding="utf-8",
+    )
 
     fig, _ = plot_confusion_matrix(
         y_validation,
@@ -92,78 +120,24 @@ def main():
         FIGURES_DIR / "confusion-matrix-validation.png",
     )
     plt.close(fig)
-
-    fig, _, roc_auc = plot_roc_curve(
+    fig, _, _ = plot_roc_curve(
         y_validation,
         probabilities,
         FIGURES_DIR / "roc-curve-validation.png",
     )
     plt.close(fig)
-
-    fig, _, average_precision = plot_precision_recall_curve(
+    fig, _, _ = plot_precision_recall_curve(
         y_validation,
         probabilities,
         FIGURES_DIR / "precision-recall-curve-validation.png",
     )
     plt.close(fig)
 
-    # 9. Save the validation classification report and metrics.
-    output = {
-        "evaluation_dataset": "validation",
-        "records": int(len(y_validation)),
-        "threshold": SELECTED_THRESHOLD,
-        "classification_report": classification_results,
-        "accuracy": float(evaluation_results["accuracy"]),
-        "precision": float(evaluation_results["precision"]),
-        "recall": float(evaluation_results["recall"]),
-        "f1_score": float(evaluation_results["f1_score"]),
-        "roc_auc": float(roc_auc),
-        "average_precision": float(average_precision),
-        "confusion_matrix": evaluation_results["confusion_matrix"],
-    }
-
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    output_path = REPORTS_DIR / "classification-report-validation.json"
-
-    with output_path.open("w", encoding="utf-8") as file:
-        json.dump(output, file, indent=4)
-
-    # 10. Display results.
-    print("\nValidation Classification Report")
-    print("--------------------------------")
-    print(pd.DataFrame(classification_results).T.to_string())
-
-    print("\nValidation Evaluation Metrics")
-    print("-----------------------------")
-
-    for metric in (
-        "accuracy",
-        "precision",
-        "recall",
-        "f1_score",
-        "roc_auc",
-    ):
-        print(f"{metric}: {output[metric]:.4f}")
-
-    print(f"average_precision: {average_precision:.4f}")
-
-    print("\nConfusion Matrix")
-    print("----------------")
-    print(evaluation_results["confusion_matrix"])
-
-    print("\nGenerated Artifacts")
-    print("-------------------")
-    print(output_path)
-
-    for filename in (
-        "confusion-matrix-validation.png",
-        "roc-curve-validation.png",
-        "precision-recall-curve-validation.png",
-    ):
-        print(FIGURES_DIR / filename)
-
-    print("\nValidation evaluation completed successfully.")
+    print("Validation model comparison")
+    print(comparison.to_string(index=False))
+    print("\nSelected model and threshold")
+    print(json.dumps(selection, indent=2))
+    print("\nHeld-out test records were not evaluated or used for selection.")
 
 
 if __name__ == "__main__":

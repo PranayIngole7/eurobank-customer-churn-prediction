@@ -1,187 +1,102 @@
-# Customer Churn Model Evaluation Report
+# Customer Churn Model Evaluation
 
-## Objective
+## Objective and data split
 
-Evaluate the selected customer churn classification model using classification metrics, visualizations, threshold analysis, and business-oriented interpretation.
+The target is `Exited` (`1` = exited, `0` = retained). The local dataset has
+10,000 rows and was split with stratification into 8,000 original training
+rows and 2,000 held-out test rows. The original training partition was split
+again into 6,000 internal training and 2,000 validation rows.
 
-The selected model is Balanced Logistic Regression. The positive class (`Exited = 1`) represents customers who churned.
+| Partition | Rows | Use |
+|---|---:|---|
+| Internal training | 6,000 | Fit candidates during model/threshold selection |
+| Validation | 2,000 | Compare candidates and select the model/threshold |
+| Original training | 8,000 | Refit selected algorithm for final model |
+| Held-out test | 2,000 | Final evaluation and post-selection group audit; not used for selection |
 
-## Evaluation Methodology
+Candidate model comparison, threshold selection, and explanation analysis
+use validation data only. After model selection, the held-out test set was
+used for the final evaluation and a descriptive group audit. Neither test
+analysis was used to change the selected model, threshold, or features.
 
-The evaluation follows a leakage-safe workflow:
+## Candidate comparison and selection
 
-| Dataset           | Records | Purpose                              |
-| ----------------- | ------: | ------------------------------------ |
-| Internal training |   6,000 | Model fitting during experimentation |
-| Validation        |   2,000 | Model and threshold selection        |
-| Original training |   8,000 | Final model refitting                |
-| Original test     |   2,000 | Final unseen-data evaluation         |
+The candidates are Majority-Class Dummy, Logistic Regression, Balanced
+Logistic Regression, Decision Tree, Random Forest, and Gradient Boosting.
+Pipelines fit preprocessing only on their internal training data.
 
-Model selection and threshold optimization used validation data. The original test dataset was reserved for final evaluation.
+At the common comparison threshold of 0.50:
 
-## Selected Model Configuration
+| Candidate | Accuracy | Precision | Recall | F1 | ROC-AUC | Average Precision |
+|---|---:|---:|---:|---:|---:|---:|
+| Majority-Class Dummy | 0.7965 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.2035 |
+| Logistic Regression | 0.8215 | 0.6420 | 0.2776 | 0.3877 | 0.7775 | 0.5265 |
+| Balanced Logistic Regression | 0.7290 | 0.4020 | 0.6806 | 0.5055 | 0.7792 | 0.5260 |
+| Decision Tree | 0.7550 | 0.4426 | 0.7862 | 0.5664 | 0.8286 | 0.6039 |
+| Random Forest | 0.8245 | 0.5579 | 0.6634 | 0.6061 | 0.8498 | 0.6498 |
+| Gradient Boosting | 0.8560 | 0.7767 | 0.4103 | 0.5370 | 0.8515 | 0.6699 |
 
-| Parameter          | Configuration       |
-| ------------------ | ------------------- |
-| Algorithm          | Logistic Regression |
-| Class weighting    | `balanced`          |
-| Maximum iterations | 1,000               |
-| Random state       | 42                  |
-| Selected threshold | 0.65                |
-| Selection metric   | Validation F1-score |
+The deployed candidate was selected by searching thresholds 0.10–0.90 in
+0.05 increments. For each model, the highest validation F1 among thresholds
+with precision at least 0.50 was selected; if none met the floor, the
+maximum-F1 threshold was used. The model with the highest resulting F1 was
+chosen, with ties broken by Average Precision, precision, fewer false
+positives, then model name. This selected **Gradient Boosting** at **0.30**.
 
-The selected pipeline was refitted using all 8,000 original training records.
+Validation selection metrics at that threshold were precision 0.6357, recall
+0.6044, F1 0.6196, ROC-AUC 0.8515, and Average Precision 0.6699. The
+validation confusion matrix was TN 1,452, FP 141, FN 161, TP 246.
 
-## Classification Evaluation
+## Final held-out test results
 
-The evaluation covers:
-- Classification report.
-- Confusion matrix.
-- ROC curve and ROC-AUC.
-- Precision-Recall curve and Average Precision.
+The selected algorithm was refit on all 8,000 original training rows, then
+evaluated once on the 2,000 test rows at the already-selected threshold 0.30.
 
-The validation classification report is saved in `classification-report-validation.json`. It contains class-wise precision, recall, F1-score, support, and aggregate metrics.
+| Metric | Test result |
+|---|---:|
+| Accuracy | 0.8465 |
+| Precision | 0.6244 |
+| Recall | 0.6167 |
+| F1-score | 0.6205 |
+| ROC-AUC | 0.8615 |
+| Average Precision | 0.7032 |
 
-### Final Test Metrics
+| Actual / predicted | Retained | Churned |
+|---|---:|---:|
+| Retained | 1,442 | 151 |
+| Churned | 156 | 251 |
 
-| Metric    | Final Test Result |
-| --------- | ----------------: |
-| Accuracy  |            0.8000 |
-| Precision |            0.5081 |
-| Recall    |            0.5405 |
-| F1-score  |            0.5238 |
-| ROC-AUC   |            0.7948 |
+Thus, 251 of 407 churned test records were identified, while 156 were missed;
+151 retained records were false alerts. These results are one held-out split,
+not a guarantee of future performance.
 
-These results represent final test performance, not validation performance.
+## Threshold and operational interpretation
 
-## Confusion Matrix Analysis
-
-Final test confusion matrix:
-
-| Actual Class | Predicted Retained | Predicted Churned |
-| ------------ | -----------------: | ----------------: |
-| Retained     |              1,380 |               213 |
-| Churned      |                187 |               220 |
-
-- True Negatives: 1,380 retained customers correctly identified.
-- False Positives: 213 retained customers incorrectly flagged.
-- False Negatives: 187 churned customers missed.
-- True Positives: 220 churned customers correctly identified.
-
-The model identified 220 of the 407 actual churners in the test dataset.
-
-## ROC and Precision-Recall Analysis
-
-| Metric            | Validation |   Final Test |
-| ----------------- | ---------: | -----------: |
-| ROC-AUC           |     0.7795 |       0.7948 |
-| Average Precision |     0.5241 | Not reported |
-
-ROC-AUC measures the model's ability to rank positive examples above negative examples across classification thresholds. Average Precision summarizes the precision-recall curve and focuses on performance for the positive churn class.
-
-The following visualizations were generated using validation data:
-
-### Validation Confusion Matrix
-
-![Validation confusion matrix](figures/confusion-matrix-validation.png)
-
-### Validation ROC Curve
-
-![Validation ROC curve](figures/roc-curve-validation.png)
-
-### Validation Precision-Recall Curve
-
-![Validation Precision-Recall curve](figures/precision-recall-curve-validation.png)
-
-The final test ROC-AUC is reused from the final test evaluation. No new test evaluation was performed to generate these validation visualizations. Final test Average Precision has not been reported.
-
-## Classification Threshold Comparison
-
-Thresholds from 0.10 to 0.90 were evaluated using validation probabilities in increments of 0.05.
-
-| Threshold | Precision | Recall | F1-score |
-| --------: | --------: | -----: | -------: |
-|      0.30 |    0.2803 | 0.8796 |   0.4252 |
-|      0.50 |    0.4043 | 0.6904 |   0.5100 |
-|      0.65 |    0.5243 | 0.5307 |   0.5275 |
-|      0.80 |    0.6647 | 0.2727 |   0.3868 |
-
-The threshold of 0.65 achieved the highest validation F1-score among the evaluated thresholds.
-
-### Threshold Visualization
-
-![Validation threshold comparison](figures/threshold-comparison.png)
-
-Detailed results are available in:
-- `threshold-comparison.csv`
-- `figures/threshold-comparison.png`
-
-## Business Impact Analysis
-
-The business impact analysis uses the 2,000 validation records.
-
-| Threshold | Customers Flagged | Genuine Churners Detected | False Alerts | Missed Churners |
-| --------: | ----------------: | ------------------------: | -----------: | --------------: |
-|      0.30 |             1,277 |                       358 |          919 |              49 |
-|      0.50 |               695 |                       281 |          414 |             126 |
-|      0.65 |               412 |                       216 |          196 |             191 |
-|      0.80 |               167 |                       111 |           56 |             296 |
-
-At the selected threshold of 0.65:
-- 412 customers are flagged for potential intervention.
-- 216 flagged customers are genuine churners.
-- 196 flagged customers are false alerts.
-- 191 actual churners are missed.
-
-A lower threshold increases churn detection but also increases intervention workload. A higher threshold reduces workload but misses more genuine churners.
-
-Threshold selection is based on validation F1-score, not a validated financial cost function. Actual retention costs, customer lifetime values, and campaign success rates were not provided. Therefore, no financial savings or return on investment are claimed.
-
-See `business-impact-analysis.md` for the detailed analysis.
-
-## Validation and Test Performance
-
-| Metric            | Validation |   Final Test |
-| ----------------- | ---------: | -----------: |
-| Accuracy          |     0.8065 |       0.8000 |
-| Precision         |     0.5243 |       0.5081 |
-| Recall            |     0.5307 |       0.5405 |
-| F1-score          |     0.5275 |       0.5238 |
-| ROC-AUC           |     0.7795 |       0.7948 |
-| Average Precision |     0.5241 | Not reported |
-
-The validation and test F1-scores are close, indicating similar performance across these two splits. This does not establish performance on future customer populations.
+At the selected validation threshold, 387 of 2,000 validation records would
+be flagged: 246 true positives and 141 false alerts, with 161 churners missed.
+This represents a 19.35% flag rate and a 60.44% validation recall. The
+precision floor is a modeling criterion, not a financial objective. Campaign
+costs, customer lifetime values, treatment effectiveness, and capacity
+constraints were not provided, so this report does not claim savings or ROI.
 
 ## Limitations
 
-- Logistic Regression may not capture complex nonlinear patterns.
-- Class weighting can affect the interpretation of predicted probabilities.
-- Predicted probabilities have not undergone separate calibration.
-- Threshold selection uses F1-score rather than a verified business cost function.
-- External validation and prospective evaluation have not been performed.
-- Actual retention campaign costs and customer lifetime values are unavailable.
-- The original test dataset must not be repeatedly used for further model tuning.
+- The dataset's provenance, collection process, and representativeness were
+  not independently verified.
+- There is no prospective or external-bank validation.
+- Probability calibration was not separately measured or applied.
+- Validation estimates also informed candidate and threshold selection and
+  should not be read as unbiased final performance estimates.
+- A single held-out split does not quantify variation across resamples.
+- Predictions and explanations are associations, not causal evidence.
+- The original test set must not be used for further tuning.
 
-## Conclusion
+## Artifacts
 
-Balanced Logistic Regression was selected with a classification threshold of 0.65.
-
-The model achieved:
-- Validation F1-score: 0.5275.
-- Final test F1-score: 0.5238.
-- Final test ROC-AUC: 0.7948.
-- Final test churn recall: 54.05%.
-
-Threshold analysis demonstrates the trade-off between churn detection and operational intervention workload. The business impact analysis translates classification results into customer counts without making unsupported financial claims.
-
-The model and its prediction dashboard provide a foundation for customer churn risk analysis. Production use would still require prospective validation, probability calibration where appropriate, operational monitoring, and verified business acceptance criteria.
-
-## Related Reports and Outputs
-
+- `model-selection-validation.json`
+- `model-comparison-validation.csv`
+- `model-threshold-comparison-validation.csv`
 - `classification-report-validation.json`
-- `threshold-comparison.csv`
-- `business-impact-analysis.md`
-- `figures/confusion-matrix-validation.png`
-- `figures/roc-curve-validation.png`
-- `figures/precision-recall-curve-validation.png`
-- `figures/threshold-comparison.png`
+- `final-model-test-evaluation.json`
+- `final-model-evaluation.md`
+- Validation plots under `figures/`

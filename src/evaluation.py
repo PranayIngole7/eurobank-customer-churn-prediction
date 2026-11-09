@@ -11,7 +11,6 @@ from pathlib import Path
 from sklearn.metrics import roc_curve, roc_auc_score
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 import pandas as pd
 
@@ -107,6 +106,8 @@ def plot_confusion_matrix(
         Matplotlib figure and axes.
     """
 
+    import matplotlib.pyplot as plt
+
     actual, predicted = _validate_binary_labels(y_true, y_pred)
 
     matrix = confusion_matrix(
@@ -160,6 +161,8 @@ def plot_roc_curve(y_true, y_score, output_path=None):
     tuple
         Matplotlib figure, axes and ROC-AUC score.
     """
+
+    import matplotlib.pyplot as plt
 
     actual = np.asarray(y_true)
     scores = np.asarray(y_score)
@@ -241,6 +244,8 @@ def plot_precision_recall_curve(y_true, y_score, output_path=None):
     tuple
         Matplotlib figure, axes and average precision score.
     """
+
+    import matplotlib.pyplot as plt
 
     actual = np.asarray(y_true)
     scores = np.asarray(y_score)
@@ -426,6 +431,8 @@ def plot_threshold_comparison(comparison, output_path=None):
     tuple
         Matplotlib figure and axes.
     """
+
+    import matplotlib.pyplot as plt
 
     required_columns = {
         "threshold",
