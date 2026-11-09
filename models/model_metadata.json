@@ -1,0 +1,36 @@
+{
+    "metadata_schema_version": 1,
+    "model_name": "gradient_boosting",
+    "algorithm": "Gradient Boosting",
+    "threshold": 0.3,
+    "feature_columns": [
+        "CreditScore",
+        "Age",
+        "Tenure",
+        "Balance",
+        "NumOfProducts",
+        "EstimatedSalary",
+        "BalanceToSalaryRatio",
+        "ProductDensityIndicator",
+        "EngagementProductInteraction",
+        "AgeTenureInteraction",
+        "Geography",
+        "Gender",
+        "AgeGroup",
+        "HasCrCard",
+        "IsActiveMember",
+        "HasBalance"
+    ],
+    "training_records": 8000,
+    "random_state": 42,
+    "target_column": "Exited",
+    "positive_class": 1,
+    "model_classes": [
+        0,
+        1
+    ],
+    "python_version": "3.10.12",
+    "scikit_learn_version": "1.7.2",
+    "joblib_version": "1.6.0",
+    "created_at": "2026-11-07T14:13:30.753726+00:00"
+}
