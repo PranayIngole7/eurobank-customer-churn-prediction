@@ -1,52 +1,65 @@
 {
-    "model_name": "logistic_regression_balanced",
-    "algorithm": "Balanced Logistic Regression",
-    "threshold": 0.65,
+    "model_name": "gradient_boosting",
+    "algorithm": "Gradient Boosting",
+    "threshold": 0.3,
     "training_records": 8000,
     "test_records": 2000,
     "metrics": {
-        "accuracy": 0.8,
-        "precision": 0.5080831408775982,
-        "recall": 0.5405405405405406,
-        "f1_score": 0.5238095238095238,
-        "roc_auc": 0.7947778286761337,
-        "average_precision": 0.5460068912925752,
+        "accuracy": 0.8465,
+        "precision": 0.6243781094527363,
+        "recall": 0.6167076167076168,
+        "f1_score": 0.6205191594561187,
+        "roc_auc": 0.8614523614523615,
+        "average_precision": 0.7032438397411409,
         "confusion_matrix": [
             [
-                1380,
-                213
+                1442,
+                151
             ],
             [
-                187,
-                220
+                156,
+                251
             ]
         ]
     },
     "classification_report": {
         "Retained (0)": {
-            "precision": 0.8806636885768986,
-            "recall": 0.8662900188323918,
-            "f1-score": 0.8734177215189873,
+            "precision": 0.9023779724655819,
+            "recall": 0.9052102950408035,
+            "f1-score": 0.9037919147602632,
             "support": 1593.0
         },
         "Churned (1)": {
-            "precision": 0.5080831408775982,
-            "recall": 0.5405405405405406,
-            "f1-score": 0.5238095238095238,
+            "precision": 0.6243781094527363,
+            "recall": 0.6167076167076168,
+            "f1-score": 0.6205191594561187,
             "support": 407.0
         },
-        "accuracy": 0.8,
+        "accuracy": 0.8465,
         "macro avg": {
-            "precision": 0.6943734147272485,
-            "recall": 0.7034152796864661,
-            "f1-score": 0.6986136226642556,
+            "precision": 0.7633780409591591,
+            "recall": 0.7609589558742101,
+            "f1-score": 0.762155537108191,
             "support": 2000.0
         },
         "weighted avg": {
-            "precision": 0.804843547120091,
-            "recall": 0.8,
-            "f1-score": 0.8022724532851115,
+            "precision": 0.8458050003424679,
+            "recall": 0.8465,
+            "f1-score": 0.8461459090558697,
             "support": 2000.0
         }
+    },
+    "selection_rule": "For each model, select the threshold with highest validation F1-score among thresholds with precision >= 0.50; if none meet the floor, use maximum F1-score across its thresholds. Select the model with highest resulting F1-score; break ties by Average Precision, precision, fewer false positives, then model name.",
+    "validation_metrics": {
+        "precision": 0.6356589147286822,
+        "recall": 0.6044226044226044,
+        "f1_score": 0.6196473551637279,
+        "roc_auc": 0.8515063599809363,
+        "average_precision": 0.6699012515033118,
+        "tn": 1452,
+        "fp": 141,
+        "fn": 161,
+        "tp": 246,
+        "precision_floor_met": true
     }
 }
