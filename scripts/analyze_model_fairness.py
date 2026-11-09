@@ -1,36 +1,28 @@
-"""
-Analyze model fairness across customer groups.
-
-The script reproduces the existing validation workflow:
-- Original train/test split
-- Internal training/validation split
-- Balanced Logistic Regression
-- Probability threshold of 0.65
-
-The original held-out test set is never used.
-"""
+"""Audit the selected model's group performance on held-out test data."""
 
 import json
 from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.data_split import split_dataset, split_training_data
+from src.data_split import split_dataset
 from src.fairness import (
     calculate_fairness_summary,
     calculate_group_metrics,
 )
 from src.feature_engineering import engineer_features
-from src.modeling import build_baseline_models
+from src.model_persistence import load_model
 
 
-DATA_PATH = Path("data/raw/european-bank.csv")
-REPORTS_DIR = Path("reports")
+DATA_PATH = PROJECT_ROOT / "data" / "raw" / "european-bank.csv"
+REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
-
-SELECTED_THRESHOLD = 0.65
 
 AUDIT_ATTRIBUTES = [
     "Gender",
@@ -190,40 +182,30 @@ def main():
     raw_data = pd.read_csv(DATA_PATH)
     processed_data = engineer_features(raw_data)
 
-    # 2. Reproduce the original training/test split.
-    #    The original test data is deliberately discarded.
-    X_train, _, y_train, _ = split_dataset(processed_data)
+    # This is a post-selection audit using the persisted final model.
+    # Test data is not used to fit, tune, or select the model or threshold.
+    _, X_test, _, y_test = split_dataset(processed_data)
+    model, metadata = load_model()
+    model_name = metadata["model_name"]
+    selected_threshold = metadata["threshold"]
 
-    # 3. Reproduce the internal training/validation split.
-    (
-        X_internal_train,
-        X_validation,
-        y_internal_train,
-        y_validation,
-    ) = split_training_data(X_train, y_train)
+    print("Held-out test fairness audit")
+    print("----------------------------")
+    print(f"Test records:               {len(X_test)}")
+    print(f"Selected model:            {metadata['algorithm']}")
+    print(f"Threshold:                 {selected_threshold}")
 
-    print("Validation dataset")
-    print("------------------")
-    print(f"Internal training records: {len(X_internal_train)}")
-    print(f"Validation records:        {len(X_validation)}")
-    print(f"Threshold:                 {SELECTED_THRESHOLD}")
-
-    # 4. Fit the exact existing model.
-    model = build_baseline_models()["logistic_regression_balanced"]
-
-    model.fit(X_internal_train, y_internal_train)
-
-    # 5. Generate validation probabilities and predictions.
+    # Generate predictions without using test labels for model decisions.
     class_labels = list(model.classes_)
     positive_class_index = class_labels.index(1)
 
-    probabilities = model.predict_proba(X_validation)[
+    probabilities = model.predict_proba(X_test)[
         :, positive_class_index
     ]
 
     predictions = pd.Series(
-        (probabilities >= SELECTED_THRESHOLD).astype(int),
-        index=X_validation.index,
+        (probabilities >= selected_threshold).astype(int),
+        index=X_test.index,
         name="prediction",
     )
 
@@ -235,21 +217,21 @@ def main():
     for attribute in AUDIT_ATTRIBUTES:
         print(f"\nAnalyzing attribute: {attribute}")
 
-        # Retrieve group labels using the original validation indexes.
-        validation_groups = processed_data.loc[
-            X_validation.index,
+        # Retrieve group labels using original test indexes.
+        test_groups = processed_data.loc[
+            X_test.index,
             attribute,
         ]
 
-        if not validation_groups.index.equals(y_validation.index):
+        if not test_groups.index.equals(y_test.index):
             raise ValueError(
-                f"Validation index mismatch for {attribute}."
+                f"Test index mismatch for {attribute}."
             )
 
         group_metrics = calculate_group_metrics(
-            y_validation,
+            y_test,
             predictions,
-            validation_groups,
+            test_groups,
         )
 
         fairness_summary = calculate_fairness_summary(
@@ -292,10 +274,11 @@ def main():
 
     # 8. Save fairness summaries and group metrics as JSON.
     output = {
-        "evaluation_dataset": "validation",
-        "records": int(len(y_validation)),
-        "model": "logistic_regression_balanced",
-        "threshold": SELECTED_THRESHOLD,
+        "evaluation_dataset": "test",
+        "records": int(len(y_test)),
+        "model": model_name,
+        "algorithm": metadata["algorithm"],
+        "threshold": selected_threshold,
         "audit_attributes": AUDIT_ATTRIBUTES,
         "confidence_intervals": {
             "method": "Wilson score interval",

@@ -29,6 +29,7 @@ def test_group_metrics_calculate_expected_values(sample_predictions):
     assert results.loc["A", "predicted_churn_rate"] == 0.5
     assert results.loc["A", "accuracy"] == 0.5
     assert results.loc["A", "precision"] == 0.5
+    assert results.loc["A", "f1_score"] == 0.5
     assert results.loc["A", "tpr"] == 0.5
     assert results.loc["A", "fpr"] == 0.5
     assert results.loc["A", "fnr"] == 0.5
@@ -38,6 +39,7 @@ def test_group_metrics_calculate_expected_values(sample_predictions):
     assert results.loc["B", "predicted_churn_rate"] == 0.5
     assert results.loc["B", "accuracy"] == 1.0
     assert results.loc["B", "precision"] == 1.0
+    assert results.loc["B", "f1_score"] == 1.0
     assert results.loc["B", "tpr"] == 1.0
     assert results.loc["B", "fpr"] == 0.0
     assert results.loc["B", "fnr"] == 0.0
@@ -72,6 +74,7 @@ def test_group_metrics_handle_zero_predicted_positives():
     results = calculate_group_metrics(y_true, y_pred, groups)
 
     assert np.isnan(results.loc["A", "precision"])
+    assert np.isnan(results.loc["A", "f1_score"])
     assert results.loc["A", "fpr"] == 0.0
     assert results.loc["B", "fnr"] == 1.0
 

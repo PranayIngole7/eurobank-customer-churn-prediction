@@ -216,6 +216,11 @@ def calculate_group_metrics(y_true, y_pred, groups):
             predicted_positive,
         )
 
+        f1_score = _safe_divide(
+            2 * true_positive,
+            2 * true_positive + false_positive + false_negative,
+        )
+
         tpr = _safe_divide(
             true_positive,
             actual_positive,
@@ -269,6 +274,7 @@ def calculate_group_metrics(y_true, y_pred, groups):
             "predicted_churn_rate": predicted_churn_rate,
             "accuracy": accuracy,
             "precision": precision,
+            "f1_score": f1_score,
             "tpr": tpr,
             "fpr": fpr,
             "fnr": fnr,
