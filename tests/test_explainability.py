@@ -7,8 +7,10 @@ from sklearn.pipeline import Pipeline
 
 from src.explainability import (
     calculate_permutation_importance,
+    calculate_shap_values,
     explain_customer_prediction,
     extract_model_coefficients,
+    generate_partial_dependence,
 )
 from src.modeling import build_baseline_models
 from src.preprocessing import FEATURE_COLUMNS
@@ -38,6 +40,15 @@ def sample_training_data():
             "HasCrCard": index % 2,
             "IsActiveMember": (index + 1) % 2,
             "HasBalance": int(index > 0),
+            "BalanceToSalaryRatio": (1000.0 * index) / (30000.0 + index),
+            "ProductDensityIndicator": (
+                (1 + (index % 2)) / (index % 11)
+                if index % 11 > 0 else 0.0
+            ),
+            "EngagementProductInteraction": (
+                (index + 1) % 2
+            ) * (1 + (index % 2)),
+            "AgeTenureInteraction": (25 + (index % 40)) * (index % 11),
             "Exited": index % 2,
         })
 
@@ -662,4 +673,169 @@ def test_explain_customer_prediction_rejects_invalid_features(
         explain_customer_prediction(
             fitted_model,
             invalid_customer,
+        )
+
+
+def test_shap_values_are_positive_class_and_feature_aligned(
+    fitted_model,
+    sample_training_data,
+):
+    X, _ = sample_training_data
+
+    results = calculate_shap_values(
+        fitted_model,
+        X.iloc[:12],
+        max_samples=4,
+        background_size=4,
+        random_state=11,
+    )
+
+    assert results["values"].shape == (4, len(FEATURE_COLUMNS))
+    assert results["feature_names"] == list(FEATURE_COLUMNS)
+    assert list(results["global_importance"]["feature"]) == list(
+        results["global_importance"]
+        .sort_values("mean_absolute_shap", ascending=False)["feature"]
+    )
+    assert np.isfinite(results["values"]).all()
+    np.testing.assert_allclose(
+        results["base_values"] + results["values"].sum(axis=1),
+        results["predictions"],
+        rtol=1e-5,
+        atol=1e-6,
+    )
+    assert np.max(np.abs(results["additivity_residual"])) <= 1e-6
+    assert results["max_evals"] == 2 * len(FEATURE_COLUMNS) + 1
+
+
+def test_shap_evaluation_budget_is_configurable(
+    fitted_model,
+    sample_training_data,
+):
+    X, _ = sample_training_data
+
+    results = calculate_shap_values(
+        fitted_model,
+        X.iloc[:2],
+        max_samples=2,
+        background_size=3,
+        max_evals=330,
+    )
+
+    assert results["max_evals"] == 330
+
+
+@pytest.mark.parametrize(
+    "max_evals",
+    [0, 32, 1.5, True, "330"],
+)
+def test_shap_rejects_invalid_evaluation_budgets(
+    fitted_model,
+    sample_training_data,
+    max_evals,
+):
+    X, _ = sample_training_data
+    with pytest.raises(ValueError, match="max_evals"):
+        calculate_shap_values(
+            fitted_model,
+            X.iloc[:2],
+            max_samples=2,
+            background_size=3,
+            max_evals=max_evals,
+        )
+
+
+def test_shap_values_can_explain_explicit_validation_rows(
+    fitted_model,
+    sample_training_data,
+):
+    X, _ = sample_training_data
+    requested_rows = pd.Index([4, 2])
+
+    results = calculate_shap_values(
+        fitted_model,
+        X,
+        max_samples=2,
+        background_size=5,
+        sample_indices=requested_rows,
+    )
+
+    pd.testing.assert_frame_equal(
+        results["data"],
+        X.loc[requested_rows].reset_index(drop=True),
+    )
+    assert results["values"].shape == (2, len(FEATURE_COLUMNS))
+
+
+def test_shap_rejects_sample_indices_not_in_input(
+    fitted_model,
+    sample_training_data,
+):
+    X, _ = sample_training_data
+
+    with pytest.raises(ValueError, match="refer to rows in X"):
+        calculate_shap_values(
+            fitted_model,
+            X,
+            sample_indices=pd.Index([1000]),
+        )
+
+
+def test_shap_rejects_feature_order_mismatch(
+    fitted_model,
+    sample_training_data,
+):
+    X, _ = sample_training_data
+    reversed_features = X.iloc[:4].loc[:, list(reversed(X.columns))]
+
+    with pytest.raises(ValueError, match="columns must match"):
+        calculate_shap_values(fitted_model, reversed_features)
+
+
+def test_shap_dependency_failure_is_reported(
+    fitted_model,
+    sample_training_data,
+    monkeypatch,
+):
+    import sys
+
+    X, _ = sample_training_data
+    monkeypatch.setitem(sys.modules, "shap", None)
+
+    with pytest.raises(ImportError, match="SHAP is required"):
+        calculate_shap_values(fitted_model, X.iloc[:2])
+
+
+def test_partial_dependence_uses_fitted_model_and_saves_plot(
+    fitted_model,
+    sample_training_data,
+    tmp_path,
+):
+    X, _ = sample_training_data
+    output_path = tmp_path / "pdp" / "balance-ratio.png"
+
+    result = generate_partial_dependence(
+        fitted_model,
+        X,
+        "BalanceToSalaryRatio",
+        grid_size=5,
+        output_path=output_path,
+    )
+
+    assert result["feature"] == "BalanceToSalaryRatio"
+    assert result["figure"] is not None
+    assert output_path.is_file()
+    assert output_path.stat().st_size > 0
+
+
+def test_partial_dependence_rejects_unknown_feature(
+    fitted_model,
+    sample_training_data,
+):
+    X, _ = sample_training_data
+
+    with pytest.raises(ValueError, match="not present"):
+        generate_partial_dependence(
+            fitted_model,
+            X,
+            "unknown_feature",
         )

@@ -5,12 +5,14 @@ Responsibilities:
 1. Extract Logistic Regression coefficients and odds ratios.
 2. Calculate permutation feature importance.
 3. Explain individual predictions using log-odds contributions.
+4. Provide optional model-agnostic explainability wrappers for SHAP and
+   partial dependence analyses.
 """
 
 import numpy as np
 import pandas as pd
 
-from sklearn.inspection import permutation_importance
+from sklearn.inspection import PartialDependenceDisplay, permutation_importance
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
@@ -451,4 +453,253 @@ def explain_customer_prediction(
         "predicted_log_odds": predicted_log_odds,
         "predicted_probability": predicted_probability,
         "contributions": contribution_results,
+    }
+
+
+def calculate_shap_values(
+    model: Pipeline,
+    X: pd.DataFrame,
+    *,
+    max_samples: int = 100,
+    background_size: int = 50,
+    random_state: int = 42,
+    sample_indices: pd.Index | None = None,
+    max_evals: int | None = None,
+):
+    """Calculate positive-class probability SHAP values on sampled rows."""
+    if not isinstance(model, Pipeline):
+        raise TypeError("Model must be a scikit-learn Pipeline.")
+
+    if not isinstance(X, pd.DataFrame):
+        raise TypeError("X must be a pandas DataFrame.")
+
+    if X.empty:
+        raise ValueError("X cannot be empty.")
+
+    validate_feature_data(X)
+
+    if not hasattr(model, "feature_names_in_"):
+        raise ValueError("Fitted model must contain original feature names.")
+
+    feature_names = list(model.feature_names_in_)
+    if list(X.columns) != feature_names:
+        raise ValueError(
+            "X columns must match the model training columns and order."
+        )
+
+    for parameter, value in (
+        ("max_samples", max_samples),
+        ("background_size", background_size),
+        ("random_state", random_state),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, np.integer))
+            or value < 0
+        ):
+            raise ValueError(f"{parameter} must be a non-negative integer.")
+    if max_samples < 1 or background_size < 1:
+        raise ValueError("max_samples and background_size must be positive.")
+    minimum_evaluations = 2 * len(feature_names) + 1
+    if max_evals is None:
+        max_evals = minimum_evaluations
+    if (
+        isinstance(max_evals, bool)
+        or not isinstance(max_evals, (int, np.integer))
+        or max_evals < minimum_evaluations
+    ):
+        raise ValueError(
+            "max_evals must be an integer of at least "
+            f"{minimum_evaluations} for {len(feature_names)} features."
+        )
+    if sample_indices is not None:
+        if not isinstance(sample_indices, pd.Index):
+            raise TypeError("sample_indices must be a pandas Index.")
+        if sample_indices.empty or sample_indices.has_duplicates:
+            raise ValueError(
+                "sample_indices must be non-empty and contain no duplicates."
+            )
+        if len(sample_indices) > max_samples:
+            raise ValueError("sample_indices cannot exceed max_samples.")
+        if not sample_indices.isin(X.index).all():
+            raise ValueError("sample_indices must refer to rows in X.")
+
+    check_is_fitted(model)
+
+    try:
+        import shap
+    except ImportError as exc:
+        raise ImportError(
+            "SHAP is required for SHAP explanations. Install project "
+            "dependencies from requirements.txt."
+        ) from exc
+
+    classes = np.asarray(model.classes_)
+    positive_class_indices = np.flatnonzero(classes == 1)
+    if len(positive_class_indices) != 1:
+        raise ValueError("Model does not contain positive class 1.")
+    positive_class_index = int(positive_class_indices[0])
+
+    categorical_levels = {}
+    shap_input = X.copy()
+    for column in feature_names:
+        if not pd.api.types.is_numeric_dtype(shap_input[column]):
+            levels = list(pd.unique(shap_input[column]))
+            categorical_levels[column] = {
+                index: value for index, value in enumerate(levels)
+            }
+            encoded_values = {
+                value: index for index, value in enumerate(levels)
+            }
+            shap_input[column] = (
+                shap_input[column].map(encoded_values).astype(float)
+            )
+
+    background = shap_input.sample(
+        n=min(background_size, len(X)),
+        random_state=int(random_state),
+    )
+    if sample_indices is None:
+        sample = shap_input.sample(
+            n=min(max_samples, len(X)),
+            random_state=int(random_state) + 1,
+        )
+    else:
+        sample = shap_input.loc[sample_indices]
+
+    def churn_probability(values):
+        frame = pd.DataFrame(values, columns=feature_names)
+        for column, levels in categorical_levels.items():
+            codes = np.rint(frame[column]).astype(int)
+            if not codes.isin(levels).all():
+                raise ValueError(
+                    f"SHAP generated an unknown category code for {column}."
+                )
+            frame[column] = codes.map(levels)
+        return model.predict_proba(frame)[:, positive_class_index]
+
+    explainer = shap.Explainer(
+        churn_probability,
+        background.to_numpy(),
+        algorithm="permutation",
+        feature_names=feature_names,
+    )
+    explanation = explainer(
+        sample.to_numpy(),
+        max_evals=int(max_evals),
+    )
+    values = np.asarray(explanation.values)
+    if values.ndim == 3:
+        if values.shape[-1] <= positive_class_index:
+            raise ValueError("SHAP output does not contain positive class 1.")
+        values = values[..., positive_class_index]
+    if values.shape != (len(sample), len(feature_names)):
+        raise ValueError(
+            "SHAP output shape does not align with sampled rows and features."
+        )
+    if not np.isfinite(values).all():
+        raise ValueError("SHAP returned non-finite attribution values.")
+
+    base_values = np.asarray(explanation.base_values, dtype=float).reshape(-1)
+    predictions = churn_probability(sample.to_numpy())
+    if len(base_values) == 1 and len(sample) > 1:
+        base_values = np.repeat(base_values, len(sample))
+    if base_values.shape != (len(sample),):
+        raise ValueError("SHAP base values do not align with explained rows.")
+    if not np.isfinite(base_values).all():
+        raise ValueError("SHAP returned non-finite base values.")
+    additivity_residual = (
+        base_values + values.sum(axis=1) - predictions
+    )
+    if not np.allclose(
+        base_values + values.sum(axis=1),
+        predictions,
+        rtol=1e-5,
+        atol=1e-6,
+    ):
+        raise ValueError(
+            "SHAP base values and feature attributions do not reconstruct "
+            "the model's positive-class probabilities."
+        )
+
+    global_importance = (
+        pd.DataFrame({
+            "feature": feature_names,
+            "mean_absolute_shap": np.abs(values).mean(axis=0),
+        })
+        .sort_values("mean_absolute_shap", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    return {
+        "feature_names": feature_names,
+        "values": values,
+        "data": X.loc[sample.index].reset_index(drop=True),
+        "base_values": base_values,
+        "predictions": predictions,
+        "additivity_residual": additivity_residual,
+        "max_evals": int(max_evals),
+        "global_importance": global_importance,
+        "explainer": explainer,
+    }
+
+
+def generate_partial_dependence(
+    model: Pipeline,
+    X: pd.DataFrame,
+    feature: str,
+    *,
+    grid_size: int = 20,
+    output_path: str | None = None,
+):
+    """Generate a partial dependence summary for a single feature."""
+    if not isinstance(model, Pipeline):
+        raise TypeError("Model must be a scikit-learn Pipeline.")
+
+    if not isinstance(X, pd.DataFrame):
+        raise TypeError("X must be a pandas DataFrame.")
+
+    if feature not in X.columns:
+        raise ValueError(f"Feature '{feature}' is not present in the dataset.")
+
+    if isinstance(grid_size, bool) or not isinstance(grid_size, int) or grid_size < 2:
+        raise ValueError("grid_size must be at least 2.")
+
+    if not hasattr(model, "feature_names_in_"):
+        raise ValueError("Fitted model must contain original feature names.")
+    if list(X.columns) != list(model.feature_names_in_):
+        raise ValueError(
+            "X columns must match the model training columns and order."
+        )
+
+    check_is_fitted(model)
+    pdp_data = X.copy()
+    if pd.api.types.is_integer_dtype(pdp_data[feature]):
+        pdp_data[feature] = pdp_data[feature].astype(float)
+
+    display = PartialDependenceDisplay.from_estimator(
+        estimator=model,
+        X=pdp_data,
+        features=[feature],
+        grid_resolution=grid_size,
+        response_method="predict_proba",
+        target=1,
+    )
+    display.axes_[0, 0].set_title(f"Partial Dependence: {feature}")
+    display.axes_[0, 0].set_xlabel(feature)
+    display.axes_[0, 0].set_ylabel("Average predicted churn probability")
+    display.figure_.tight_layout()
+
+    if output_path is not None:
+        from pathlib import Path
+
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        display.figure_.savefig(destination, dpi=300, bbox_inches="tight")
+
+    return {
+        "feature": feature,
+        "figure": display.figure_,
+        "axes": display.axes_,
+        "result": display.pd_results[0],
     }
