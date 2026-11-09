@@ -23,6 +23,15 @@ def sample_dataset():
             "HasCrCard": index % 2,
             "IsActiveMember": (index + 1) % 2,
             "HasBalance": int(index > 0),
+            "BalanceToSalaryRatio": (1000.0 * index) / (30000.0 + index),
+            "ProductDensityIndicator": (
+                (1 + (index % 2)) / (index % 11)
+                if index % 11 > 0 else 0.0
+            ),
+            "EngagementProductInteraction": (
+                (index + 1) % 2
+            ) * (1 + (index % 2)),
+            "AgeTenureInteraction": (25 + (index % 40)) * (index % 11),
             "Exited": index % 2,
         })
 
