@@ -37,5 +37,11 @@ models/*
 .pytest_cache/
 .coverage
 htmlcov/
+
 # Generated batch prediction files
 data/batch_prediction_results.csv
+
+# Local customer-level analysis outputs
+reports/customer-risk-scores.csv
+reports/local-customer-contributions.csv
+reports/local-customer-summary.csv
