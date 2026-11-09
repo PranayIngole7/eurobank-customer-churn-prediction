@@ -28,6 +28,10 @@ def sample_features():
             "HasCrCard": [1, 0, 1, 0],
             "IsActiveMember": [1, 1, 0, 0],
             "HasBalance": [0, 1, 1, 1],
+            "BalanceToSalaryRatio": [0.0, 0.025, 0.04, 0.05],
+            "ProductDensityIndicator": [1.0, 0.5, 1 / 6, 0.25],
+            "EngagementProductInteraction": [1, 2, 0, 0],
+            "AgeTenureInteraction": [50, 140, 270, 440],
         }
     )
 
@@ -96,8 +100,8 @@ def test_extra_columns_are_allowed_but_not_required(sample_features):
 
 
 def test_feature_columns_contain_expected_features():
-    assert len(FEATURE_COLUMNS) == 12
-    assert len(set(FEATURE_COLUMNS)) == 12
+    assert len(FEATURE_COLUMNS) == 16
+    assert len(set(FEATURE_COLUMNS)) == 16
 
 
 def test_build_preprocessor_returns_unfitted_transformer():

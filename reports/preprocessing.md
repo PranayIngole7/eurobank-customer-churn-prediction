@@ -8,7 +8,7 @@ The preprocessing pipeline is designed to provide consistent transformations whi
 
 ## 2. Feature Selection
 
-The model uses 12 input features, organized into three groups.
+The model uses 16 input features, organized into three groups.
 
 ### Numerical features
 
@@ -18,6 +18,10 @@ The model uses 12 input features, organized into three groups.
 - `Balance`
 - `NumOfProducts`
 - `EstimatedSalary`
+- `BalanceToSalaryRatio`
+- `ProductDensityIndicator`
+- `EngagementProductInteraction`
+- `AgeTenureInteraction`
 
 **Transformation:** `StandardScaler`
 
@@ -77,11 +81,11 @@ An 8,000-row diagnostic dataset was used to inspect the expected transformation 
 
 | Measurement                     | Result |
 | ------------------------------- | -----: |
-| Input features                  |     12 |
-| Numerical output features       |      6 |
+| Input features                  |     16 |
+| Numerical output features       |     10 |
 | One-hot encoded output features |     10 |
 | Binary output features          |      3 |
-| Total transformed features      |     19 |
+| Total transformed features      |     23 |
 
 Additional checks examined:
 

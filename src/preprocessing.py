@@ -25,6 +25,10 @@ NUMERICAL_FEATURES = [
     "Balance",
     "NumOfProducts",
     "EstimatedSalary",
+    "BalanceToSalaryRatio",
+    "ProductDensityIndicator",
+    "EngagementProductInteraction",
+    "AgeTenureInteraction",
 ]
 
 CATEGORICAL_FEATURES = [
