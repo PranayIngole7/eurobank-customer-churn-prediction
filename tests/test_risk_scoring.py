@@ -168,8 +168,28 @@ def test_model_without_positive_class_is_rejected():
         def predict_proba(self, X):
             return np.array([[0.5, 0.5]])
 
-    with pytest.raises(ValueError, match="positive class"):
+    with pytest.raises(ValueError, match="classes"):
         score_customers(InvalidClassModel(), make_features(1))
+
+
+@pytest.mark.parametrize(
+    "probabilities",
+    [
+        [[0.2, 0.7]],
+        [[0.2, 0.8], [np.nan, 0.0]],
+        [[0.2, 0.8], [0.0, 1.1]],
+        [[0.2, 0.8], [0.4, 0.4]],
+    ],
+)
+def test_invalid_probability_matrix_is_rejected(probabilities):
+    class MatrixModel:
+        classes_ = np.array([0, 1])
+
+        def predict_proba(self, X):
+            return np.asarray(probabilities)
+
+    with pytest.raises(ValueError, match="probabilit"):
+        score_customers(MatrixModel(), make_features(len(probabilities)))
 
 
 @pytest.mark.parametrize(

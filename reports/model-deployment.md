@@ -28,6 +28,10 @@ Raw Input Validation
 Feature Engineering
   - HasBalance
   - AgeGroup
+  - BalanceToSalaryRatio
+  - ProductDensityIndicator
+  - EngagementProductInteraction
+  - AgeTenureInteraction
        |
        v
 Model Feature Selection
@@ -35,12 +39,11 @@ and Validation
        |
        v
 Persisted Scikit-learn Pipeline
-  - StandardScaler
-  - OneHotEncoder
-  - Balanced Logistic Regression
+  - Numerical and categorical preprocessing
+  - Gradient Boosting
        |
        v
-Risk Scoring (threshold = 0.65)
+Risk Scoring (threshold = 0.30)
        |
        v
 Prediction Results
@@ -79,15 +82,20 @@ python -m scripts.train_final_model
 The training script performs the following operations:
 
 1. Loads the original customer dataset.
-2. Applies feature engineering to generate `HasBalance` and `AgeGroup`.
-3. Uses the established stratified 80/20 train/test split.
-4. Trains the selected Balanced Logistic Regression model using the original training partition.
-5. Evaluates the fitted model on the untouched original test partition.
-6. Uses the previously selected classification threshold of 0.65.
-7. Generates model metadata and persists the fitted model.
-8. Saves machine-readable evaluation results and a Markdown evaluation report.
+2. Applies the shared feature engineering process.
+3. Splits off the held-out test partition and performs candidate comparison
+   and model/threshold selection using training and validation rows only.
+4. Refits the selected Gradient Boosting algorithm on all original training
+   rows.
+5. Evaluates once on the held-out test partition at the validation-selected
+   threshold of 0.30.
+6. Generates model metadata and persists the fitted pipeline.
+7. Saves machine-readable selection and evaluation results and a Markdown
+   final evaluation report.
 
-The classification threshold was selected using validation data. The original test partition is reserved for final evaluation and is not used to tune the model, threshold, or features.
+The classification threshold was selected using validation data. The original
+test partition is used for final evaluation and a post-selection fairness
+audit, but not to tune the model, threshold, or features.
 
 ### Generated artifacts
 
@@ -121,7 +129,10 @@ It contains:
 
 The prediction service uses metadata to retrieve the classification threshold and expected feature order.
 
-The persistence module validates the metadata structure and compatibility with the application's expected feature configuration. It also verifies that the loaded model's class labels match the metadata.
+The persistence module validates the metadata structure, expected feature
+configuration, and model class labels. It also checks that the fitted
+estimator's feature names and their order match the metadata before the
+model is saved or loaded.
 
 Recorded environment versions provide traceability. They do not constitute automatic compatibility checks for every dependency. Use the project's declared requirements when recreating the environment.
 
@@ -231,12 +242,21 @@ The prediction service expects ten raw customer attributes.
 | `HasCrCard`       | Credit card ownership indicator |
 | `IsActiveMember`  | Active membership indicator     |
 
-The application derives two additional features:
+The application derives six features:
 
 - `HasBalance`: Indicates whether the customer has a positive balance.
 - `AgeGroup`: Groups customers into age categories.
+- `BalanceToSalaryRatio`: Balance divided by estimated salary; zero salary
+  returns `0.0` as a division-by-zero convention.
+- `ProductDensityIndicator`: Product count divided by tenure; zero tenure
+  returns `0.0` as a division-by-zero convention.
+- `EngagementProductInteraction`: Active-member indicator times product count.
+- `AgeTenureInteraction`: Age times tenure.
 
-The resulting model input contains twelve features in the order declared by the model metadata.
+The resulting model input contains 16 features in the order declared by the
+model metadata. The shared `engineer_features` implementation is used for
+training and inference. See `reports/feature-engineering.md` for definitions
+and limitations.
 
 Additional columns, such as customer identifiers, may be supplied but are not included in model inference. The target column `Exited` must not be supplied.
 
@@ -265,25 +285,29 @@ Invalid input raises an appropriate exception instead of silently producing a pr
 
 ## 9. Final Model Test Performance
 
-The selected Balanced Logistic Regression model achieved the following results on the untouched 2,000-record test partition.
+The selected Gradient Boosting model, using the validation-selected
+threshold of 0.30, achieved the following results on the untouched 2,000-row
+test partition.
 
 | Metric            | Test Result |
 | ----------------- | ----------: |
-| Accuracy          |      0.8000 |
-| Precision         |      0.5081 |
-| Recall            |      0.5405 |
-| F1-score          |      0.5238 |
-| ROC-AUC           |      0.7948 |
-| Average Precision |      0.5460 |
+| Accuracy          |      0.8465 |
+| Precision         |      0.6244 |
+| Recall            |      0.6167 |
+| F1-score          |      0.6205 |
+| ROC-AUC           |      0.8615 |
+| Average Precision |      0.7032 |
 
 ### Confusion Matrix
 
 | Actual / Predicted | Retained (0) | Churned (1) |
 | ------------------ | -----------: | ----------: |
-| Retained (0)       |        1,380 |         213 |
-| Churned (1)        |          187 |         220 |
+| Retained (0)       |        1,442 |         151 |
+| Churned (1)        |          156 |         251 |
 
-At the selected threshold of 0.65, the model correctly identified 220 of the 407 customers who churned in the test partition. It missed 187 actual churners and generated 213 false-positive churn predictions.
+At the selected threshold of 0.30, the model correctly identified 251 of
+the 407 customers who churned in the test partition. It missed 156 actual
+churners and generated 151 false-positive churn predictions.
 
 These results illustrate the model's ability to identify potential churn while also showing that its predictions require careful interpretation.
 
@@ -305,6 +329,11 @@ The application provides four pages:
 | Single Customer Prediction | Generates predictions for an individual customer   |
 | Batch Prediction           | Supports predictions for multiple customer records |
 | Model Insights             | Presents model evaluation and related insights     |
+
+The batch page includes a probability-distribution histogram. The single
+customer page includes a what-if scenario simulator that calls the existing
+`PredictionService` for both baseline and modified inputs. Scenario changes
+are model-based comparisons, not causal estimates.
 
 The dashboard uses the project's application and prediction modules rather than implementing a separate prediction pipeline.
 

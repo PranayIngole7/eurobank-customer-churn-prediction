@@ -47,6 +47,14 @@ def create_model_metadata(model, training_results):
 
     if not hasattr(model, "classes_"):
         raise ValueError("Model must be fitted before metadata creation.")
+    if not hasattr(model, "feature_names_in_"):
+        raise ValueError(
+            "Model must record its input feature names before metadata creation."
+        )
+    if list(model.feature_names_in_) != FEATURE_COLUMNS:
+        raise ValueError(
+            "Model input feature columns do not match the application feature order."
+        )
 
     required_result_fields = {
         "model_name",
@@ -196,6 +204,7 @@ def save_model(
 
     if list(model.classes_) != metadata["model_classes"]:
         raise ValueError("Model classes do not match metadata.")
+    _validate_model_feature_order(model, metadata)
 
     model_path = Path(model_path)
     metadata_path = Path(metadata_path)
@@ -285,8 +294,22 @@ def load_model(
 
     if list(model.classes_) != metadata["model_classes"]:
         raise ValueError("Loaded model classes do not match metadata.")
+    _validate_model_feature_order(model, metadata)
 
     return model, metadata
+
+
+def _validate_model_feature_order(model, metadata):
+    """Require the fitted estimator's input schema to match its metadata."""
+    feature_names = getattr(model, "feature_names_in_", None)
+    if feature_names is None:
+        raise ValueError(
+            "Loaded model does not expose its fitted input feature names."
+        )
+    if list(feature_names) != metadata["feature_columns"]:
+        raise ValueError(
+            "Loaded model feature order does not match model metadata."
+        )
 
 
 def get_model_metadata(metadata_path=DEFAULT_METADATA_PATH):

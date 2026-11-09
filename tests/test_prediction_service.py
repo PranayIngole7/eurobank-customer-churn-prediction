@@ -7,6 +7,8 @@ from src.prediction_service import (
     PredictionService,
     RAW_REQUIRED_COLUMNS,
 )
+from src.feature_engineering import engineer_features
+from src.preprocessing import FEATURE_COLUMNS
 
 
 class FakeModel:
@@ -15,6 +17,7 @@ class FakeModel:
     classes_ = np.array([0, 1])
 
     def predict_proba(self, X):
+        self.last_input = X.copy(deep=True)
         # Customers with a balance receive probability 0.8.
         # Customers without a balance receive probability 0.2.
         positive_probabilities = np.where(
@@ -53,20 +56,7 @@ def model_metadata():
         "model_name": "test_model",
         "algorithm": "Fake Logistic Regression",
         "threshold": 0.65,
-        "feature_columns": [
-            "CreditScore",
-            "Age",
-            "Tenure",
-            "Balance",
-            "NumOfProducts",
-            "EstimatedSalary",
-            "Geography",
-            "Gender",
-            "AgeGroup",
-            "HasCrCard",
-            "IsActiveMember",
-            "HasBalance",
-        ],
+        "feature_columns": FEATURE_COLUMNS.copy(),
         "training_records": 100,
     }
 
@@ -188,6 +178,21 @@ def test_predict_many_returns_dataframe(
     )
 
     assert result["churn_prediction"].tolist() == [1, 0]
+
+
+def test_inference_uses_training_feature_engineering_and_order(
+    service,
+    customer,
+):
+    service.predict_one(customer)
+    expected = engineer_features(pd.DataFrame([customer]))[
+        list(FEATURE_COLUMNS)
+    ]
+
+    pd.testing.assert_frame_equal(
+        service._model.last_input.reset_index(drop=True),
+        expected.reset_index(drop=True),
+    )
 
 
 def test_predict_many_preserves_input_index(

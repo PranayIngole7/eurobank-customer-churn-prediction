@@ -28,11 +28,18 @@ from src.preprocessing import (
 from src.risk_scoring import score_customers
 
 
-# Features required from the application before feature engineering.
+# Features supplied by the application before feature engineering.
+ENGINEERED_FEATURE_COLUMNS = {
+    "AgeGroup",
+    "HasBalance",
+    "BalanceToSalaryRatio",
+    "ProductDensityIndicator",
+    "EngagementProductInteraction",
+    "AgeTenureInteraction",
+}
 RAW_REQUIRED_COLUMNS = [
-    column
-    for column in FEATURE_COLUMNS
-    if column not in {"AgeGroup", "HasBalance"}
+    column for column in FEATURE_COLUMNS
+    if column not in ENGINEERED_FEATURE_COLUMNS
 ]
 
 
@@ -158,7 +165,7 @@ class PredictionService:
         # Work on a copy so the caller's DataFrame remains unchanged.
         raw_customers = customers.copy(deep=True)
 
-        # Generate HasBalance and AgeGroup.
+        # Generate all derived features through the same training-time function.
         engineered_customers = engineer_features(raw_customers)
 
         # Select the exact model feature columns and their stored order.

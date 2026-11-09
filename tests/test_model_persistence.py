@@ -22,12 +22,10 @@ from src.preprocessing import FEATURE_COLUMNS
 
 @pytest.fixture
 def fitted_model():
-    X = pd.DataFrame(
-        {
-            "feature_1": [1, 2, 3, 4, 5, 6],
-            "feature_2": [2, 1, 4, 3, 6, 5],
-        }
-    )
+    X = pd.DataFrame({
+        column: np.arange(1, 7) + offset
+        for offset, column in enumerate(FEATURE_COLUMNS)
+    })
 
     y = [0, 0, 0, 1, 1, 1]
 
@@ -91,6 +89,24 @@ def test_create_model_metadata_rejects_missing_training_results(
 ):
     with pytest.raises(ValueError, match="missing fields"):
         create_model_metadata(fitted_model, {})
+
+
+def test_create_model_metadata_rejects_input_feature_order_mismatch(
+    training_results,
+):
+    mismatched_model = Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            ("classifier", LogisticRegression()),
+        ]
+    )
+    mismatched_model.fit(
+        pd.DataFrame({"different_feature": [1, 2, 3, 4, 5, 6]}),
+        [0, 0, 0, 1, 1, 1],
+    )
+
+    with pytest.raises(ValueError, match="feature columns"):
+        create_model_metadata(mismatched_model, training_results)
 
 
 def test_validate_metadata_accepts_valid_metadata(metadata):
@@ -159,8 +175,8 @@ def test_save_and_load_model_round_trip(
 
     X = pd.DataFrame(
         {
-            "feature_1": [2, 5],
-            "feature_2": [1, 6],
+            column: np.array([2, 5]) + offset
+            for offset, column in enumerate(FEATURE_COLUMNS)
         }
     )
 
@@ -268,4 +284,28 @@ def test_load_model_rejects_incompatible_model_classes(
     joblib.dump(incompatible_model, model_path)
 
     with pytest.raises(ValueError, match="classes"):
+        load_model(model_path, metadata_path)
+
+
+def test_load_model_rejects_feature_order_mismatch(
+    metadata,
+    tmp_path,
+):
+    mismatched_model = Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            ("classifier", LogisticRegression()),
+        ]
+    )
+    mismatched_model.fit(
+        pd.DataFrame({"different_feature": [1, 2, 3, 4, 5, 6]}),
+        [0, 0, 0, 1, 1, 1],
+    )
+
+    model_path = tmp_path / "model.joblib"
+    metadata_path = tmp_path / "metadata.json"
+    joblib.dump(mismatched_model, model_path)
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="feature order"):
         load_model(model_path, metadata_path)
