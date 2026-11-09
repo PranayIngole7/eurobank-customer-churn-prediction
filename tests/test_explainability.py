@@ -763,6 +763,10 @@ def test_shap_values_can_explain_explicit_validation_rows(
         results["data"],
         X.loc[requested_rows].reset_index(drop=True),
     )
+    pd.testing.assert_index_equal(
+        results["sample_indices"],
+        requested_rows,
+    )
     assert results["values"].shape == (2, len(FEATURE_COLUMNS))
 
 

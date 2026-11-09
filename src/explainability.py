@@ -268,7 +268,11 @@ def explain_customer_prediction(
     customer_features: pd.DataFrame,
 ) -> dict:
     """
-    Explain one customer's Logistic Regression prediction.
+    Explain one customer's prediction using legacy Logistic Regression
+    coefficient-based attribution.
+
+    This utility is retained for compatibility and testing. The selected
+    Gradient Boosting model is explained using calculate_shap_values().
 
     Each transformed feature's contribution is calculated as:
         coefficient * transformed feature value
@@ -635,6 +639,7 @@ def calculate_shap_values(
         "feature_names": feature_names,
         "values": values,
         "data": X.loc[sample.index].reset_index(drop=True),
+        "sample_indices": sample.index.copy(),
         "base_values": base_values,
         "predictions": predictions,
         "additivity_residual": additivity_residual,

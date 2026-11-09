@@ -73,6 +73,8 @@ def main():
         index=False,
     )
     local_explanation = pd.DataFrame({
+        "validation_record_index": int(shap_results["sample_indices"][0]),
+        "predicted_probability": float(shap_results["predictions"][0]),
         "feature": shap_results["feature_names"],
         "customer_value": shap_results["data"].iloc[0].to_numpy(),
         "shap_value": shap_results["values"][0],
